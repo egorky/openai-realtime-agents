@@ -1,3 +1,72 @@
+## Project Overview (Updated)
+
+This project provides a real-time voice agent interface with OpenAI. It has been structured to offer separate views for end-users (clients) and supervisors.
+
+*   **Client View (`/client`):** This is the interface for the end-user to interact with the voice agent (e.g., for customer support).
+*   **Supervisor View (`/supervisor`):** This interface allows a supervisor to monitor agent interactions, view API calls, and see the AI's reasoning logs.
+*   **Landing Page (`/`):** The root path now serves a landing page to navigate to either the Client or Supervisor view.
+
+## Setup and Running
+
+**1. Environment Variables:**
+
+*   Copy the `.env.sample` file to `.env`: `cp .env.sample .env`
+*   Fill in the required environment variables in `.env`, such as your `OPENAI_API_KEY`.
+*   **For HTTPS (local development):**
+    *   The `.env` file includes `HTTPS_CERT_PATH=./localhost.pem` and `HTTPS_KEY_PATH=./localhost-key.pem`.
+    *   You need to generate these SSL certificate files. A tool like `mkcert` can be used:
+        ```bash
+        # Install mkcert (follow official instructions: https://github.com/FiloSottile/mkcert)
+        mkcert -install
+        mkcert localhost 127.0.0.1 ::1
+        # This will create localhost.pem and localhost-key.pem in the current directory.
+        # Ensure these files are in the root of your project or update paths in .env.
+        ```
+
+**2. Install Dependencies:**
+```bash
+npm install
+# or
+yarn install
+```
+*(This replaces the `npm i` from the original setup section)*
+
+**3. Running the Development Server:**
+
+*   **With HTTPS (recommended for features like microphone access):**
+    Modify the `dev` script in your `package.json` to include the experimental HTTPS flags and your certificate paths (values from `.env` can be used if your shell/environment supports it, or hardcode paths):
+    ```json
+    // package.json
+    "scripts": {
+      // ... other scripts
+      "dev": "next dev --experimental-https --experimental-https-key $HTTPS_KEY_PATH --experimental-https-cert $HTTPS_CERT_PATH"
+      // Or, using default paths if you generated certs in the root:
+      // "dev": "next dev --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem"
+    },
+    ```
+    Then run:
+    ```bash
+    npm run dev
+    # or
+    yarn dev
+    ```
+    The application will typically be available at `https://localhost:3000`.
+
+*   **Without HTTPS (some browser features might be limited):**
+    If you haven't configured HTTPS certificates, you can run the standard development server (though microphone access might be blocked by browsers on non-secure origins):
+    ```bash
+    next dev
+    ```
+    *(This replaces `npm run dev` and the note about opening browser to localhost:3000 from original setup, as it's now more detailed)*
+
+**Accessing the Views:**
+
+*   **Landing Page:** `https://localhost:3000/` (or `http://localhost:3000` if not using HTTPS)
+*   **Client View:** `https://localhost:3000/client`
+*   **Supervisor View:** `https://localhost:3000/supervisor`
+
+---
+
 # Realtime API Agents Demo
 
 This is a demonstration of more advanced patterns for voice agents, using the OpenAI Realtime API and the OpenAI Agents SDK. 
@@ -19,7 +88,7 @@ There are two main patterns demonstrated:
 1. **Chat-Supervisor:** A realtime-based chat agent interacts with the user and handles basic tasks, while a more intelligent, text-based supervisor model (e.g., `gpt-4.1`) is used extensively for tool calls and more complex responses. This approach provides an easy onramp and high-quality answers, with a small increase in latency.
 2. **Sequential Handoff:** Specialized agents (powered by realtime api) transfer the user between them to handle specific user intents. This is great for customer service, where user intents can be handled sequentially by specialist models that excel in a specific domains. This helps avoid the model having all instructions and tools in a single agent, which can degrade performance.
 
-## Setup
+## Original Setup (Superseded by "Setup and Running" above)
 
 - This is a Next.js typescript app. Install dependencies with `npm i`.
 - Add your `OPENAI_API_KEY` to your env. Either add it to your `.bash_profile` or equivalent, or copy `.env.sample` to `.env` and add it there.
@@ -212,12 +281,15 @@ sequenceDiagram
 
 ## Output Guardrails
 Assistant messages are checked for safety and compliance before they are shown in the UI.  The guardrail call now lives directly inside `src/app/App.tsx`: when a `response.text.delta` stream starts we mark the message as **IN_PROGRESS**, and once the server emits `guardrail_tripped` or `response.done` we mark the message as **FAIL** or **PASS** respectively.  If you want to change how moderation is triggered or displayed, search for `guardrail_tripped` inside `App.tsx` and tweak the logic there.
+*(Note: The above "Output Guardrails" section refers to the now-deleted `App.tsx`. This should be updated or removed in a future step if not relevant to the new structure.)*
+
 
 ## Navigating the UI
 - You can select agent scenarios in the Scenario dropdown, and automatically switch to a specific agent with the Agent dropdown.
 - The conversation transcript is on the left, including tool calls, tool call responses, and agent changes. Click to expand non-message elements.
 - The event log is on the right, showing both client and server events. Click to see the full payload.
 - On the bottom, you can disconnect, toggle between automated voice-activity detection or PTT, turn off audio playback, and toggle logs.
+*(Note: The "Navigating the UI" section also refers to the old UI. The new Client and Supervisor views have different controls. This should be updated.)*
 
 ## Pull Requests
 
