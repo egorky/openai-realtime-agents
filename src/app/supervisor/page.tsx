@@ -234,79 +234,69 @@ function SupervisorApp() {
     const newConvId = uuidv4();
     setCurrentSupervisorConversationId(newConvId);
 
-    const scenarioInfo = supervisorSdkScenarioMap[currentAgentSetKey];
-    if (!scenarioInfo) {
-      console.error(`Supervisor: Scenario for key ${currentAgentSetKey} not found.`);
+    const scenarioDetails = supervisorSdkScenarioMap[currentAgentSetKey]; // Renamed from scenarioInfo to avoid conflict
+    if (!scenarioDetails || !Array.isArray(scenarioDetails.scenario)) { // Check if scenario is an array
+      console.error(`Supervisor: Scenario not found or invalid for key ${currentAgentSetKey}`);
+      setSessionStatus("DISCONNECTED");
+      logClientEvent({type: "system.error", message: `Supervisor: Scenario not found or invalid for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
       return;
     }
     if (!currentAgentName) {
         console.error(`Supervisor: No agent selected for scenario ${currentAgentSetKey}.`);
+        setSessionStatus("DISCONNECTED");
+        logClientEvent({type: "system.error", message: `Supervisor: No agent selected for scenario ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
         return;
     }
-
 
     if (sessionStatus !== "DISCONNECTED") return;
     setSessionStatus("CONNECTING");
     logClientEvent({type: "system.log", message: `Supervisor connecting to session with agent: ${currentAgentName}`}, "supervisor_connect_attempt", newConvId);
 
     try {
-      const EPHEMERAL_KEY = await fetchEphemeralKey(); // Will use newConvId via currentSupervisorConversationId if state updates fast enough, or rely on closure
+      const EPHEMERAL_KEY = await fetchEphemeralKey();
       if (!EPHEMERAL_KEY) return;
 
-      // let agentsToConnect = [...scenarioInfo.scenario]; // shallow copy of the array
-      // Deep clone and modify agents to use the editable metaprompt
-      let agentsToConnect = scenarioInfo.scenario.map(agentConfig => {
-        // Create a structured clone, ensuring essential array properties like 'tools' are present.
-        const originalTools = agentConfig.tools || []; // Default to empty array if tools is undefined/null
+      // Create a new array of agent configurations with overrides using shallow copies
+      let processedAgents = scenarioDetails.scenario.map(originalAgentConfig => {
+        let modifiedAgentConfig = { ...originalAgentConfig }; // Shallow copy
 
-        // Perform a deep clone, but be mindful of functions or complex objects not handled by JSON.stringify/parse.
-        // For agent configs that are primarily data, JSON cloning is usually okay.
-        const clonedAgentConfig = JSON.parse(JSON.stringify({
-          ...agentConfig,
-          tools: originalTools, // Explicitly include tools, ensuring it's an array
-        }));
+        modifiedAgentConfig.prompt = editableMetaprompt; // Apply global metaprompt
 
-        clonedAgentConfig.prompt = editableMetaprompt;
-
-        // Ensure 'tools' is an array on the cloned object, even if originalTools was empty.
-        // This step might be redundant if the spread above and stringify/parse correctly handle it,
-        // but it's a strong guarantee.
-        if (!Array.isArray(clonedAgentConfig.tools)) {
-          clonedAgentConfig.tools = [];
+        // Apply agent-specific overrides
+        if (originalAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
+          if (typeof editableAgentSpecificTexts.greeting === 'string') {
+            modifiedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
+          }
+          if (typeof editableAgentSpecificTexts.instructions === 'string') {
+            modifiedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
+          }
         }
 
-        return clonedAgentConfig;
+        // Ensure 'tools' is an array
+        if (!Array.isArray(modifiedAgentConfig.tools)) {
+          modifiedAgentConfig.tools = [];
+        }
+        return modifiedAgentConfig;
       });
 
-      // Now, apply agent-specific edited texts for the selected agent
-      if (editableAgentSpecificTexts) {
-        agentsToConnect = agentsToConnect.map(agentConfigFromFirstPass => { // Renamed for clarity
-          if (agentConfigFromFirstPass.name === currentAgentName) {
-            // agentConfigFromFirstPass already has .prompt and a guaranteed .tools array
-            const updatedAgentConfig = { ...agentConfigFromFirstPass };
-            if (typeof editableAgentSpecificTexts.greeting === 'string') {
-              updatedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
-            }
-            if (typeof editableAgentSpecificTexts.instructions === 'string') {
-              updatedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
-            }
-            return updatedAgentConfig;
-          }
-          return agentConfigFromFirstPass;
-        });
+      // Reorder agents
+      const currentAgentIndex = processedAgents.findIndex(agent => agent.name === currentAgentName);
+      if (currentAgentIndex > 0) {
+        const agentToMove = processedAgents.splice(currentAgentIndex, 1)[0];
+        processedAgents.unshift(agentToMove);
+      } else if (currentAgentIndex === -1 && processedAgents.length > 0) {
+        console.warn(`Supervisor: Selected agent name "${currentAgentName}" not found in scenario "${currentAgentSetKey}". Using first agent "${processedAgents[0].name}".`);
+        setCurrentAgentName(processedAgents[0].name); // This might trigger re-renders, use with caution or ensure it's stable
+      } else if (processedAgents.length === 0) {
+        console.error(`Supervisor: No agents found or processed for scenario ${currentAgentSetKey}.`);
+        setSessionStatus("DISCONNECTED");
+        logClientEvent({type: "system.error", message: `No agents in scenario ${currentAgentSetKey} after processing`}, "supervisor_connect_fail_config", newConvId);
+        return;
       }
 
-      // Reorder agents if needed (currentAgentName to be first)
-      const idx = agentsToConnect.findIndex((a) => a.name === currentAgentName);
-      if (idx > 0) {
-        const [agent] = agentsToConnect.splice(idx, 1);
-        agentsToConnect.unshift(agent);
-      } else if (idx === -1 && agentsToConnect.length > 0) {
-         setCurrentAgentName(agentsToConnect[0].name); // Default to first if not found
-      }
+      const agentsToConnect = processedAgents;
 
-
-      const guardrail = createModerationGuardrail(scenarioInfo.companyName);
+      const guardrail = createModerationGuardrail(scenarioDetails.companyName); // Use scenarioDetails
 
       console.log("Supervisor: Attempting to connect with initialAgents:", JSON.stringify(agentsToConnect, null, 2));
       // This will show the exact structure being passed to the SDK.
