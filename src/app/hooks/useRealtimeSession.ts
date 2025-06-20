@@ -21,6 +21,7 @@ export interface ConnectOptions {
   audioElement?: HTMLAudioElement;
   extraContext?: Record<string, any>;
   outputGuardrails?: any[];
+  defaultPrompt?: string; // New option
 }
 
 export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
@@ -115,6 +116,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
       audioElement,
       extraContext,
       outputGuardrails,
+      defaultPrompt, // Destructure the new option
     }: ConnectOptions) => {
       if (sessionRef.current) return; // already connected
 
@@ -138,6 +140,7 @@ export function useRealtimeSession(callbacks: RealtimeSessionCallbacks = {}) {
           },
         }),
         model: 'gpt-4o-realtime-preview-2025-06-03',
+        defaultPrompt: defaultPrompt, // Pass it here
         config: {
           inputAudioFormat: audioFormat,
           outputAudioFormat: audioFormat,
