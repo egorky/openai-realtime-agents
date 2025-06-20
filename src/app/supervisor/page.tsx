@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
+import { v4 as uuidv4 } from "uuid";
 
 // UI components
 import Events from "@/app/components/Events";
@@ -25,6 +26,12 @@ import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
 interface EditableAgentTexts {
   greeting?: string;
   instructions?: string;
+}
+
+interface SimpleToolDefinition {
+  name: string;
+  description?: string;
+  parameters?: object; // JSON schema
 }
 import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
 import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
@@ -56,6 +63,7 @@ function SupervisorApp() {
   const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(""); // To allow reset
   const [editableAgentSpecificTexts, setEditableAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
   const [originalAgentSpecificTexts, setOriginalAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
+  const [currentAgentTools, setCurrentAgentTools] = useState<SimpleToolDefinition[] | null>(null);
 
   const allConversationIds = useMemo(() => {
     const ids = new Set<string>();
@@ -146,15 +154,24 @@ function SupervisorApp() {
         }
         setEditableAgentSpecificTexts(texts);
         setOriginalAgentSpecificTexts(texts);
+
+        // Load tools
+        if (agentConfig.tools && Array.isArray(agentConfig.tools)) {
+          setCurrentAgentTools(agentConfig.tools as SimpleToolDefinition[]); // Cast if necessary
+        } else {
+          setCurrentAgentTools(null);
+        }
       } else {
         setEditableAgentSpecificTexts(null); // No specific agent selected or found
         setOriginalAgentSpecificTexts(null);
+        setCurrentAgentTools(null);
       }
     } else {
       setEditableAgentSpecificTexts(null);
       setOriginalAgentSpecificTexts(null);
+      setCurrentAgentTools(null);
     }
-  }, [currentAgentSetKey, currentAgentName]); // supervisorSdkScenarioMap is stable, removed from deps
+  }, [currentAgentSetKey, currentAgentName, supervisorSdkScenarioMap]);
 
   // Initialize agent configuration based on URL or default
   useEffect(() => {
@@ -400,33 +417,42 @@ function SupervisorApp() {
         {/* Placeholder for global controls or user info */}
       </div>
 
-      <SupervisorControls
-        sessionStatus={sessionStatus}
-        onToggleConnection={onToggleConnection}
-        currentAgentSetKey={currentAgentSetKey}
-        handleAgentScenarioChange={handleAgentScenarioChange}
-        selectedAgentName={currentAgentName}
-        handleSelectedAgentNameChange={handleSelectedAgentNameChange}
-        currentAgentConfigSet={currentAgentConfigSet}
-        isEventsPaneExpanded={isEventsPaneExpanded}
-        setIsEventsPaneExpanded={setIsEventsPaneExpanded}
-        isAudioPlaybackEnabled={isAudioPlaybackEnabled}
-        setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
-        supervisorSdkScenarioMap={supervisorSdkScenarioMap}
-        editableMetaprompt={editableMetaprompt}
-        setEditableMetaprompt={setEditableMetaprompt}
-        onResetMetaprompt={() => setEditableMetaprompt(originalMetaprompt)}
-        editableAgentSpecificTexts={editableAgentSpecificTexts}
-        setEditableAgentSpecificTexts={setEditableAgentSpecificTexts}
-        onResetAgentSpecificTexts={() => setEditableAgentSpecificTexts(originalAgentSpecificTexts)}
-        allConversationIds={allConversationIds}
-        selectedConversationId={selectedConvIdFilter}
-        onSelectConversationId={setSelectedConvIdFilter}
-      />
+      {/* Main Content Area: Two Columns */}
+      <div className="flex flex-1 overflow-hidden border-t border-gray-700">
+        {/* Left Column: Logs */}
+        <div className="w-1/2 h-full overflow-y-auto p-3 border-r border-gray-600 bg-gray-800">
+          <Events
+            isExpanded={true} // Always expanded
+            filterByConversationId={selectedConvIdFilter}
+          />
+        </div>
 
-      <div className="flex flex-1 p-2 overflow-hidden relative">
-        {/* Events component is central to supervisor view */}
-        <Events isExpanded={isEventsPaneExpanded} filterByConversationId={selectedConvIdFilter} />
+        {/* Right Column: Controls, Editors, Tool Display */}
+        <div className="w-1/2 h-full overflow-y-auto p-3 bg-gray-750">
+          <SupervisorControls
+            sessionStatus={sessionStatus}
+            onToggleConnection={onToggleConnection}
+            currentAgentSetKey={currentAgentSetKey}
+            handleAgentScenarioChange={handleAgentScenarioChange}
+            selectedAgentName={currentAgentName}
+            handleSelectedAgentNameChange={handleSelectedAgentNameChange}
+            currentAgentConfigSet={currentAgentConfigSet}
+            // isEventsPaneExpanded and setIsEventsPaneExpanded are removed
+            isAudioPlaybackEnabled={isAudioPlaybackEnabled}
+            setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
+            supervisorSdkScenarioMap={supervisorSdkScenarioMap}
+            editableMetaprompt={editableMetaprompt}
+            setEditableMetaprompt={setEditableMetaprompt}
+            onResetMetaprompt={() => setEditableMetaprompt(originalMetaprompt)}
+            editableAgentSpecificTexts={editableAgentSpecificTexts}
+            setEditableAgentSpecificTexts={setEditableAgentSpecificTexts}
+            onResetAgentSpecificTexts={() => setEditableAgentSpecificTexts(originalAgentSpecificTexts)}
+            allConversationIds={allConversationIds}
+            selectedConversationId={selectedConvIdFilter}
+            onSelectConversationId={setSelectedConvIdFilter}
+            // Tool display will be added here or as part of SupervisorControls later
+          />
+        </div>
       </div>
 
       {/* Optional: A minimal status bar at the bottom if needed */}

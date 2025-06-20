@@ -20,8 +20,8 @@ interface SupervisorControlsProps {
   selectedAgentName: string;
   handleSelectedAgentNameChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   currentAgentConfigSet: RealtimeAgent[] | null;
-  isEventsPaneExpanded: boolean;
-  setIsEventsPaneExpanded: (expanded: boolean) => void;
+  // isEventsPaneExpanded: boolean; // Removed
+  // setIsEventsPaneExpanded: (expanded: boolean) => void; // Removed
   isAudioPlaybackEnabled: boolean;
   setIsAudioPlaybackEnabled: (enabled: boolean) => void;
   supervisorSdkScenarioMap: Record<string, SupervisorSdkScenario>;
@@ -34,6 +34,7 @@ interface SupervisorControlsProps {
   allConversationIds: string[];
   selectedConversationId: string | null;
   onSelectConversationId: (id: string | null) => void;
+  agentTools: SimpleToolDefinition[] | null; // Added new prop
 }
 
 // Define EditableAgentTexts interface if not already globally available
@@ -41,6 +42,13 @@ interface SupervisorControlsProps {
 interface EditableAgentTexts {
   greeting?: string;
   instructions?: string;
+}
+
+// Define SimpleToolDefinition locally if not imported
+interface SimpleToolDefinition {
+  name: string;
+  description?: string;
+  parameters?: object; // JSON schema
 }
 
 const SupervisorControls: React.FC<SupervisorControlsProps> = ({
@@ -51,8 +59,8 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
   selectedAgentName,
   handleSelectedAgentNameChange,
   currentAgentConfigSet,
-  isEventsPaneExpanded,
-  setIsEventsPaneExpanded,
+  // isEventsPaneExpanded, // Removed
+  // setIsEventsPaneExpanded, // Removed
   isAudioPlaybackEnabled,
   setIsAudioPlaybackEnabled,
   supervisorSdkScenarioMap,
@@ -62,11 +70,11 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
   editableAgentSpecificTexts,
   setEditableAgentSpecificTexts,
   onResetAgentSpecificTexts,
-  // selectedAgentName is already a prop, used for titling the edit section
-  // selectedAgentName, // This was the duplicate, now removed. The actual prop is destructured below.
+  // selectedAgentName, // This was the duplicate, now removed. The actual prop is destructured below - it's just 'selectedAgentName'
   allConversationIds,
   selectedConversationId,
   onSelectConversationId,
+  agentTools, // Added new prop
 }) => {
   return (
     <div className="bg-gray-700 text-white p-3 flex flex-col gap-4"> {/* Changed to flex-col for better layout with textarea */}
@@ -128,15 +136,7 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
       </div>
 
       <div className="flex items-center gap-4">
-        <label className="flex items-center text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isEventsPaneExpanded}
-            onChange={(e) => setIsEventsPaneExpanded(e.target.checked)}
-            className="form-checkbox h-4 w-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
-          />
-          <span className="ml-2 text-gray-300">Show Logs</span>
-        </label>
+        {/* "Show Logs" toggle removed */}
         <label className="flex items-center text-sm cursor-pointer">
           <input
             type="checkbox"
@@ -249,6 +249,29 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
             <option key={id} value={id}>{id.substring(0, 8)}...</option>
           ))}
         </select>
+      </div>
+    )}
+
+    {/* Agent Tools Display Section */}
+    {agentTools && agentTools.length > 0 && (
+      <div className="w-full mt-3 p-3 bg-gray-550 rounded-md border border-gray-500">
+        <h4 className="text-md font-semibold mb-2 text-white">Tools for Agent: <span className="font-bold text-purple-300">{selectedAgentName}</span></h4>
+        <div className="space-y-3 max-h-96 overflow-y-auto pr-2 custom-scrollbar"> {/* Added custom-scrollbar if defined */}
+          {agentTools.map((tool, index) => (
+            <div key={index} className="p-2.5 bg-gray-600 rounded-md shadow">
+              <p className="text-sm font-semibold text-teal-300 break-all">{tool.name}</p>
+              {tool.description && <p className="text-xs text-gray-200 mt-1">{tool.description}</p>}
+              {tool.parameters && (
+                <div className="mt-1.5">
+                  <p className="text-xs font-medium text-gray-300 mb-0.5">Parameters:</p>
+                  <pre className="text-xs text-gray-100 bg-gray-700 p-2 rounded-sm whitespace-pre-wrap break-all custom-scrollbar-small">
+                    {JSON.stringify(tool.parameters, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     )}
   </div>
