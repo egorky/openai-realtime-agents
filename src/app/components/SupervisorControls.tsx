@@ -63,7 +63,7 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
   setEditableAgentSpecificTexts,
   onResetAgentSpecificTexts,
   // selectedAgentName is already a prop, used for titling the edit section
-  selectedAgentName,
+  // selectedAgentName, // This was the duplicate, now removed. The actual prop is destructured below.
   allConversationIds,
   selectedConversationId,
   onSelectConversationId,
