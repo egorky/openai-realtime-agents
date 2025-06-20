@@ -260,7 +260,8 @@ function SupervisorApp() {
       let processedAgents = scenarioDetails.scenario.map(originalAgentConfig => {
         let modifiedAgentConfig = { ...originalAgentConfig }; // Shallow copy
 
-        modifiedAgentConfig.prompt = editableMetaprompt; // Apply global metaprompt
+        // DO NOT set modifiedAgentConfig.prompt here anymore.
+        // It will be passed as defaultPrompt to the session.
 
         // Apply agent-specific overrides
         if (originalAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
@@ -326,6 +327,7 @@ function SupervisorApp() {
         audioElement: sdkAudioElement, // Supervisor listens here
         outputGuardrails: [guardrail],
         extraContext: { addTranscriptBreadcrumb }, // For logging agent changes etc.
+        defaultPrompt: editableMetaprompt, // Add this line
         // Supervisor specific: might not need input audio stream or turn detection in the same way
         // For now, it mirrors client, but this could be optimized.
       });
