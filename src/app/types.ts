@@ -136,6 +136,7 @@ export interface LoggedEvent {
   timestamp: string;
   eventName: string;
   eventData: Record<string, any>; // can have arbitrary objects logged
+  conversationId?: string;
 }
 
 // Update the GuardrailOutputZod schema to use the shared ModerationCategoryZod

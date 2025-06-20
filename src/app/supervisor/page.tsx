@@ -20,6 +20,12 @@ import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 // Agent configs
 import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
 // Import all scenarios available to the supervisor
+
+// At the top of src/app/supervisor/page.tsx or in a relevant types file
+interface EditableAgentTexts {
+  greeting?: string;
+  instructions?: string;
+}
 import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
 import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
 import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff"; // Assuming a company name might be generic or defined elsewhere for this
@@ -37,12 +43,29 @@ import SupervisorControls from "@/app/components/SupervisorControls";
 function SupervisorApp() {
   const searchParams = useSearchParams()!;
   const { addTranscriptBreadcrumb } = useTranscript(); // Kept for potential breadcrumbs in supervisor logs
-  const { logClientEvent, logServerEvent } = useEvent();
+  const { logClientEvent, logServerEvent, loggedEvents: allLoggedEventsFromContext } = useEvent(); // Get all logged events
+  const [currentSupervisorConversationId, setCurrentSupervisorConversationId] = useState<string | null>(null);
+  const [selectedConvIdFilter, setSelectedConvIdFilter] = useState<string | null>(null);
+
 
   // State for selected scenario and agent within that scenario
   const [currentAgentSetKey, setCurrentAgentSetKey] = useState<string>(defaultAgentSetKey);
   const [currentAgentName, setCurrentAgentName] = useState<string>("");
   const [currentAgentConfigSet, setCurrentAgentConfigSet] = useState<RealtimeAgent[] | null>(null);
+  const [editableMetaprompt, setEditableMetaprompt] = useState<string>("");
+  const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(""); // To allow reset
+  const [editableAgentSpecificTexts, setEditableAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
+  const [originalAgentSpecificTexts, setOriginalAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
+
+  const allConversationIds = useMemo(() => {
+    const ids = new Set<string>();
+    allLoggedEventsFromContext.forEach(event => { // Use the events from context
+      if (event.conversationId) {
+        ids.add(event.conversationId);
+      }
+    });
+    return Array.from(ids).sort(); // Sort for consistent order
+  }, [allLoggedEventsFromContext]);
 
 
   const audioElementRef = useRef<HTMLAudioElement | null>(null); // Supervisor might want to listen in.
@@ -96,6 +119,43 @@ function SupervisorApp() {
 
   useHandleSessionHistory(); // May or may not be relevant for supervisor, but harmless
 
+  // In SupervisorApp, useEffect for loading initial metaprompt
+  useEffect(() => {
+    // Simulate loading the translated metaprompt content
+    const initialMetapromptContent = `Eres un asistente de IA de voz. Responde al usuario de forma conversacional y concisa. No incluyas ningún formato especial en tus respuestas. No incluyas nada que no deba ser leído por la conversión de texto a voz. No necesitas decir cosas como 'Claro', 'Por supuesto', o 'Entendido' a menos que sea una respuesta afirmativa a una pregunta directa. En su lugar, ve directo a la respuesta. Si no puedes ayudar con algo, dilo y explica por qué. Puedes usar las siguientes herramientas para ayudarte a responder al usuario. Para usar una herramienta, responde únicamente con un bloque de código JSON que especifique el nombre de la herramienta y las entradas que necesita. El bloque de código JSON debe ser el único contenido en tu respuesta. No lo envuelves con \`\`\`json.
+
+<TOOL_DESCRIPTIONS>`; // Note: <TOOL_DESCRIPTIONS> is a placeholder used by the SDK
+    setEditableMetaprompt(initialMetapromptContent);
+    setOriginalMetaprompt(initialMetapromptContent);
+  }, []);
+
+  useEffect(() => {
+    if (currentAgentSetKey && currentAgentName && supervisorSdkScenarioMap[currentAgentSetKey]) {
+      const scenario = supervisorSdkScenarioMap[currentAgentSetKey].scenario;
+      const agentConfig = scenario.find(agent => agent.name === currentAgentName);
+
+      if (agentConfig) {
+        const texts: EditableAgentTexts = {};
+        if (typeof agentConfig.greeting === 'string') {
+          texts.greeting = agentConfig.greeting;
+        }
+        // For instructions, agentConfig.instructions might be complex (e.g. an object or array in some structures)
+        // We are targeting simple string instructions here as per RealtimeAgent type.
+        if (typeof agentConfig.instructions === 'string') {
+          texts.instructions = agentConfig.instructions;
+        }
+        setEditableAgentSpecificTexts(texts);
+        setOriginalAgentSpecificTexts(texts);
+      } else {
+        setEditableAgentSpecificTexts(null); // No specific agent selected or found
+        setOriginalAgentSpecificTexts(null);
+      }
+    } else {
+      setEditableAgentSpecificTexts(null);
+      setOriginalAgentSpecificTexts(null);
+    }
+  }, [currentAgentSetKey, currentAgentName]); // supervisorSdkScenarioMap is stable, removed from deps
+
   // Initialize agent configuration based on URL or default
   useEffect(() => {
     let agentKeyFromUrl = searchParams.get("agentConfig");
@@ -130,22 +190,22 @@ function SupervisorApp() {
     } else if (sessionStatus === "CONNECTED" && currentAgentConfigSet && currentAgentName) {
       // If already connected and agent changes, this implies a handoff or a change needing session update
       const currentAgent = currentAgentConfigSet.find(a => a.name === currentAgentName);
-      logClientEvent({ type: "system.log", message: `Monitoring agent: ${currentAgentName}` }, "agent_monitor_update");
+      logClientEvent({ type: "system.log", message: `Monitoring agent: ${currentAgentName}` }, "agent_monitor_update", currentSupervisorConversationId || undefined);
       addTranscriptBreadcrumb(`Agent: ${currentAgentName}`, currentAgent); // Log change for supervisor
       updateSession(!handoffTriggeredRef.current); // Update session, maybe send a meta-event
       handoffTriggeredRef.current = false;
     }
-  }, [currentAgentSetKey, currentAgentName, currentAgentConfigSet, sessionStatus]);
+  }, [currentAgentSetKey, currentAgentName, currentAgentConfigSet, sessionStatus, currentSupervisorConversationId]);
 
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
-    logClientEvent({ url: "/session" }, "fetch_session_token_request_supervisor");
+    logClientEvent({ url: "/session" }, "fetch_session_token_request_supervisor", currentSupervisorConversationId || undefined);
     const tokenResponse = await fetch("/api/session"); // Same endpoint for token
     const data = await tokenResponse.json();
-    logServerEvent(data, "fetch_session_token_response_supervisor");
+    logServerEvent(data, "fetch_session_token_response_supervisor", currentSupervisorConversationId || undefined);
 
     if (!data.client_secret?.value) {
-      logClientEvent(data, "error.no_ephemeral_key_supervisor");
+      logClientEvent(data, "error.no_ephemeral_key_supervisor", currentSupervisorConversationId || undefined);
       console.error("Supervisor: No ephemeral key provided by the server");
       setSessionStatus("DISCONNECTED");
       return null;
@@ -154,6 +214,9 @@ function SupervisorApp() {
   };
 
   const connectToRealtime = async () => {
+    const newConvId = uuidv4();
+    setCurrentSupervisorConversationId(newConvId);
+
     const scenarioInfo = supervisorSdkScenarioMap[currentAgentSetKey];
     if (!scenarioInfo) {
       console.error(`Supervisor: Scenario for key ${currentAgentSetKey} not found.`);
@@ -167,20 +230,44 @@ function SupervisorApp() {
 
     if (sessionStatus !== "DISCONNECTED") return;
     setSessionStatus("CONNECTING");
-    logClientEvent({type: "system.log", message: `Supervisor connecting to session with agent: ${currentAgentName}`}, "supervisor_connect_attempt");
+    logClientEvent({type: "system.log", message: `Supervisor connecting to session with agent: ${currentAgentName}`}, "supervisor_connect_attempt", newConvId);
 
     try {
-      const EPHEMERAL_KEY = await fetchEphemeralKey();
+      const EPHEMERAL_KEY = await fetchEphemeralKey(); // Will use newConvId via currentSupervisorConversationId if state updates fast enough, or rely on closure
       if (!EPHEMERAL_KEY) return;
 
-      const reorderedAgents = [...scenarioInfo.scenario];
-      const idx = reorderedAgents.findIndex((a) => a.name === currentAgentName);
+      // let agentsToConnect = [...scenarioInfo.scenario]; // shallow copy of the array
+      // Deep clone and modify agents to use the editable metaprompt
+      let agentsToConnect = scenarioInfo.scenario.map(agentConfig => {
+        const clonedAgentConfig = JSON.parse(JSON.stringify(agentConfig)); // Deep clone
+        clonedAgentConfig.prompt = editableMetaprompt; // Override or set the prompt
+        return clonedAgentConfig;
+      });
+
+      // Now, apply agent-specific edited texts for the selected agent
+      if (editableAgentSpecificTexts) {
+        agentsToConnect = agentsToConnect.map(agentConfig => {
+          if (agentConfig.name === currentAgentName) {
+            const updatedAgentConfig = { ...agentConfig }; // Shallow copy this specific agent config
+            if (typeof editableAgentSpecificTexts.greeting === 'string') {
+              updatedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
+            }
+            if (typeof editableAgentSpecificTexts.instructions === 'string') {
+              updatedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
+            }
+            return updatedAgentConfig;
+          }
+          return agentConfig;
+        });
+      }
+
+      // Reorder agents if needed (currentAgentName to be first)
+      const idx = agentsToConnect.findIndex((a) => a.name === currentAgentName);
       if (idx > 0) {
-        const [agent] = reorderedAgents.splice(idx, 1);
-        reorderedAgents.unshift(agent);
-      } else if (idx === -1 && reorderedAgents.length > 0) {
-         // This case should ideally not happen if currentAgentName is always set from the list
-         setCurrentAgentName(reorderedAgents[0].name); // Default to first if not found
+        const [agent] = agentsToConnect.splice(idx, 1);
+        agentsToConnect.unshift(agent);
+      } else if (idx === -1 && agentsToConnect.length > 0) {
+         setCurrentAgentName(agentsToConnect[0].name); // Default to first if not found
       }
 
 
@@ -188,25 +275,25 @@ function SupervisorApp() {
 
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
-        initialAgents: reorderedAgents,
+        initialAgents: agentsToConnect, // Use the modified list
         audioElement: sdkAudioElement, // Supervisor listens here
         outputGuardrails: [guardrail],
         extraContext: { addTranscriptBreadcrumb }, // For logging agent changes etc.
         // Supervisor specific: might not need input audio stream or turn detection in the same way
         // For now, it mirrors client, but this could be optimized.
       });
-       logClientEvent({type: "system.log", message: `Supervisor connected to session with agent: ${currentAgentName}`}, "supervisor_connect_success");
+       logClientEvent({type: "system.log", message: `Supervisor connected to session with agent: ${currentAgentName}`}, "supervisor_connect_success", newConvId);
     } catch (err) {
       console.error("Supervisor: Error connecting via SDK:", err);
       setSessionStatus("DISCONNECTED");
-      logClientEvent({type: "system.error", message: `Supervisor connection error: ${err}`}, "supervisor_connect_fail");
+      logClientEvent({type: "system.error", message: `Supervisor connection error: ${err}`}, "supervisor_connect_fail", newConvId);
     }
   };
 
   const disconnectFromRealtime = () => {
     disconnect();
     // setSessionStatus("DISCONNECTED"); // This is handled by onConnectionChange
-    logClientEvent({type: "system.log", message: "Supervisor disconnected."}, "supervisor_disconnect");
+    logClientEvent({type: "system.log", message: "Supervisor disconnected."}, "supervisor_disconnect", currentSupervisorConversationId || undefined);
   };
 
   // Supervisor doesn't send user messages, but might need to update session for other reasons
@@ -229,7 +316,7 @@ function SupervisorApp() {
     if (shouldTriggerAgentResponse) {
       // This was for client before, supervisor might have a different way if needed
       // sendEvent({ type: 'response.create' });
-      logClientEvent({type: "system.log", message: "Supervisor triggered agent response (if applicable)."}, "supervisor_trigger_response");
+      logClientEvent({type: "system.log", message: "Supervisor triggered agent response (if applicable)."}, "supervisor_trigger_response", currentSupervisorConversationId || undefined);
     }
   };
 
@@ -277,7 +364,7 @@ function SupervisorApp() {
     setCurrentAgentName(newAgentName);
     // User will need to click "Connect" again to connect with this specific agent as primary.
     // Or, we can auto-trigger a reconnect sequence here. For now, manual.
-    logClientEvent({type: "system.log", message: `Supervisor selected agent: ${newAgentName}. Reconnect to activate.`}, "supervisor_agent_select");
+    logClientEvent({type: "system.log", message: `Supervisor selected agent: ${newAgentName}. Reconnect to activate.`}, "supervisor_agent_select", currentSupervisorConversationId || undefined);
   };
 
 
@@ -326,11 +413,20 @@ function SupervisorApp() {
         isAudioPlaybackEnabled={isAudioPlaybackEnabled}
         setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
         supervisorSdkScenarioMap={supervisorSdkScenarioMap}
+        editableMetaprompt={editableMetaprompt}
+        setEditableMetaprompt={setEditableMetaprompt}
+        onResetMetaprompt={() => setEditableMetaprompt(originalMetaprompt)}
+        editableAgentSpecificTexts={editableAgentSpecificTexts}
+        setEditableAgentSpecificTexts={setEditableAgentSpecificTexts}
+        onResetAgentSpecificTexts={() => setEditableAgentSpecificTexts(originalAgentSpecificTexts)}
+        allConversationIds={allConversationIds}
+        selectedConversationId={selectedConvIdFilter}
+        onSelectConversationId={setSelectedConvIdFilter}
       />
 
       <div className="flex flex-1 p-2 overflow-hidden relative">
         {/* Events component is central to supervisor view */}
-        <Events isExpanded={isEventsPaneExpanded} />
+        <Events isExpanded={isEventsPaneExpanded} filterByConversationId={selectedConvIdFilter} />
       </div>
 
       {/* Optional: A minimal status bar at the bottom if needed */}

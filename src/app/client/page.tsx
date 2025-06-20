@@ -45,6 +45,7 @@ function ClientApp() {
 
   const { addTranscriptMessage, addTranscriptBreadcrumb } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
   const [selectedAgentKey, setSelectedAgentKey] = useState<string>(clientDefaultAgentSetKey);
   // Agent name within the selected scenario (usually the first agent)
@@ -87,6 +88,7 @@ function ClientApp() {
 
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>("DISCONNECTED");
   const [userText, setUserText] = useState<string>("");
+  const [userIntentionalDisconnect, setUserIntentionalDisconnect] = useState<boolean>(false);
   const [isPTTActive, setIsPTTActive] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const stored = localStorage.getItem('clientPushToTalkUI'); // Client specific storage key
@@ -104,7 +106,7 @@ function ClientApp() {
   const sendClientEventHelper = (eventObj: any, eventNameSuffix = "") => {
     try {
       sendEvent(eventObj);
-      logClientEvent(eventObj, eventNameSuffix);
+      logClientEvent(eventObj, eventNameSuffix, currentConversationId || undefined);
     } catch (err) {
       console.error('Failed to send via SDK', err);
     }
@@ -131,11 +133,19 @@ function ClientApp() {
   }, [searchParams]);
 
   useEffect(() => {
-    // Auto-connect if agent is set and disconnected
-    if (selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED") {
-      connectToRealtime();
+    // Auto-connect if agent is set, disconnected, and it wasn't an intentional disconnect by the user
+    if (selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED" && !userIntentionalDisconnect) {
+      // Check if essential config is present before attempting to connect
+      const scenarioInfo = clientSdkScenarioMap[selectedAgentKey];
+      if(scenarioInfo && scenarioInfo.scenario.find(a => a.name === currentAgentName)) {
+          connectToRealtime();
+      } else {
+          console.warn("Client: Auto-connect skipped. Agent config or name invalid/missing for selectedAgentKey:", selectedAgentKey, "currentAgentName:", currentAgentName);
+          // Optionally add a transcript message if this state is reached and auto-connection is expected by user.
+          // addTranscriptMessage(uuidv4().slice(0,32), "system", "Auto-connection skipped: Agent configuration missing or invalid.", false);
+      }
     }
-  }, [selectedAgentKey, currentAgentName, sessionStatus]);
+  }, [selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect]); // Added userIntentionalDisconnect to dependencies
 
    useEffect(() => {
     if (sessionStatus === "CONNECTED" && clientSdkScenarioMap[selectedAgentKey] && currentAgentName) {
@@ -156,13 +166,13 @@ function ClientApp() {
   }, [isPTTActive]);
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
-    logClientEvent({ url: "/session" }, "fetch_session_token_request");
+    logClientEvent({ url: "/session" }, "fetch_session_token_request", currentConversationId || undefined);
     let tokenResponseMessage = "Error: Could not obtain session token."; // Default error message
 
     try {
       const tokenResponse = await fetch("/api/session");
       const data = await tokenResponse.json();
-      logServerEvent(data, "fetch_session_token_response");
+      logServerEvent(data, "fetch_session_token_response", currentConversationId || undefined);
 
       if (!tokenResponse.ok) {
         // Server responded with an error status (4xx, 5xx)
@@ -172,7 +182,7 @@ function ClientApp() {
         tokenResponseMessage = `Error: ${serverError}${errorDetails ? ` (Details: ${errorDetails})` : ''}`;
 
         console.error(`Failed to fetch ephemeral key: ${tokenResponse.status} ${tokenResponse.statusText}`, data);
-        logClientEvent({ error: serverError, details: data.details, status: tokenResponse.status }, "error.fetch_ephemeral_key_failed_status");
+        logClientEvent({ error: serverError, details: data.details, status: tokenResponse.status }, "error.fetch_ephemeral_key_failed_status", currentConversationId || undefined);
         setSessionStatus("DISCONNECTED");
         addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
         return null;
@@ -183,7 +193,7 @@ function ClientApp() {
         // This case is now less likely if the server-side check is robust, but good to keep.
         tokenResponseMessage = data.error ? `Error: ${data.error}` : "Error: Session token not found in server response.";
         console.error("No ephemeral key provided by the server, though response was OK:", data);
-        logClientEvent(data, "error.no_ephemeral_key_value");
+        logClientEvent(data, "error.no_ephemeral_key_value", currentConversationId || undefined);
         setSessionStatus("DISCONNECTED");
         addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
         return null;
@@ -196,7 +206,7 @@ function ClientApp() {
       // Catch network errors or issues with `tokenResponse.json()` if response isn't valid JSON
       console.error("Network or parsing error fetching ephemeral key:", error);
       tokenResponseMessage = `Error: Network or server communication issue. ${error.message || ""}`;
-      logClientEvent({ error: error.message, type: error.type }, "error.fetch_ephemeral_key_network_or_parse");
+      logClientEvent({ error: error.message, type: error.type }, "error.fetch_ephemeral_key_network_or_parse", currentConversationId || undefined);
       setSessionStatus("DISCONNECTED");
       addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
       return null;
@@ -204,6 +214,9 @@ function ClientApp() {
   };
 
   const connectToRealtime = async () => {
+    const newConversationId = uuidv4(); // Generate new ID
+    setCurrentConversationId(newConversationId);
+
     const selectedScenarioInfo = clientSdkScenarioMap[selectedAgentKey];
     if (!selectedScenarioInfo) {
         console.error(`Client: No scenario found for agent key "${selectedAgentKey}".`);
@@ -218,7 +231,7 @@ function ClientApp() {
 
 
     try {
-      const EPHEMERAL_KEY = await fetchEphemeralKey();
+      const EPHEMERAL_KEY = await fetchEphemeralKey(); // This will now use currentConversationId for its logs
       if (!EPHEMERAL_KEY) return; // Error already handled by fetchEphemeralKey
 
       const scenarioAgents = [...selectedScenarioInfo.scenario];
@@ -268,7 +281,7 @@ function ClientApp() {
         id,
         type: 'message',
         role: 'user', // Sent on behalf of user to trigger agent
-        content: [{ type: 'input_text', text: 'hi' }], // Standard greeting
+        content: [{ type: 'input_text', text: 'hola' }], // Standard greeting
       },
     }, "internal_greeting");
     sendClientEventHelper({ type: 'response.create' }, 'trigger_initial_response');
@@ -323,9 +336,17 @@ function ClientApp() {
 
   const onToggleConnection = () => {
     if (sessionStatus === "CONNECTED" || sessionStatus === "CONNECTING") {
+      setUserIntentionalDisconnect(true); // Set intent before disconnecting
       disconnectFromRealtime();
     } else {
-      connectToRealtime();
+      setUserIntentionalDisconnect(false); // Reset intent before connecting
+      // It's also good to ensure agent keys are set before trying to connect
+      if (selectedAgentKey && currentAgentName) {
+          connectToRealtime();
+      } else {
+          addTranscriptMessage(uuidv4().slice(0,32), "system", "Please select an agent configuration if available, or ensure default is set.", true);
+          console.error("Client: Cannot connect without selectedAgentKey and currentAgentName");
+      }
     }
   };
 
