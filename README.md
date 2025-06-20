@@ -35,11 +35,7 @@ yarn install
 
 *   **With HTTPS (recommended for features like microphone access):**
 
-    **Important:** For HTTPS to work during local development, you **must manually edit** your `package.json` file. The Next.js development server needs the certificate paths passed directly as command-line arguments. The `.env` variables `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` are provided for your convenience to store these paths, but the application code itself cannot dynamically configure the Next.js server's startup flags with these.
-
-    Modify the `dev` script in your `package.json` as shown below. Choose one of the options:
-
-    Option 1: Using environment variables from your shell (if supported, e.g., on Linux/macOS):
+    The `dev` script in `package.json` has been pre-configured to enable HTTPS by default using Next.js's experimental HTTPS feature:
     ```json
     // package.json
     "scripts": {
@@ -47,24 +43,26 @@ yarn install
       "dev": "next dev --experimental-https --experimental-https-key $HTTPS_KEY_PATH --experimental-https-cert $HTTPS_CERT_PATH"
     },
     ```
-    *(Ensure `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` are exported or available in your shell environment if you use this method.)*
 
-    Option 2: Using fixed paths (recommended for simplicity if paths don't change often):
-    ```json
-    // package.json
-    "scripts": {
-      // ... other scripts
-      "dev": "next dev --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem"
-    },
-    ```
-    *(This assumes `localhost-key.pem` and `localhost.pem` are in your project root, matching the `.env` example.)*
-    Then run:
+    **Prerequisites for HTTPS to work with `npm run dev`:**
+    1.  **Certificate Files:** You must have your SSL certificate (`.pem`) and private key (`-key.pem`) files. The `.env` file is set up to point to `./localhost.pem` and `./localhost-key.pem` by default. Generate these using a tool like `mkcert` if you haven't already (see instructions in the ".env Configuration" section above/below).
+    2.  **Shell Environment Variables:** The paths to your certificate and key files **must be available as environment variables in your shell session** where you run `npm run dev`. These variables are `HTTPS_CERT_PATH` and `HTTPS_KEY_PATH`.
+        *   For example, in your shell (e.g., `.bashrc`, `.zshrc`, or manually before running `npm run dev`):
+            ```bash
+            export HTTPS_CERT_PATH=./localhost.pem
+            export HTTPS_KEY_PATH=./localhost-key.pem
+            # (Adjust paths if your certs are located elsewhere)
+            ```
+        *   If these environment variables are not set in your shell, or if the certificate files are not found at the specified paths, `npm run dev` may fail to start with HTTPS or fall back to HTTP.
+        *   The `.env` file defines these variables for the application runtime (e.g., for `src/app/lib/envSetup.ts` to read), but they also need to be available to the shell process that launches `npm run dev` for Next.js to pick them up from the command line arguments `$HTTPS_KEY_PATH` and `$HTTPS_CERT_PATH`.
+
+    Once the prerequisites are met, run:
     ```bash
     npm run dev
     # or
     yarn dev
     ```
-    The application will typically be available at `https://localhost:3000`.
+    The application will typically be available at `https://localhost:3000`. If you encounter issues, ensure your shell environment variables are correctly set and the certificate files exist at the specified paths.
 
 *   **Without HTTPS (some browser features might be limited):**
     If you haven't configured HTTPS certificates, you can run the standard development server (though microphone access might be blocked by browsers on non-secure origins):
