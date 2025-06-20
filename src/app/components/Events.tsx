@@ -37,20 +37,30 @@ function Events({ isExpanded, filterByConversationId }: EventsProps) { // Added 
   }, [loggedEvents, isExpanded]);
 
   return (
-    <div
+    <div // Root div
       className={
-        (isExpanded ? "w-1/2 overflow-auto" : "w-0 overflow-hidden opacity-0") +
-        " transition-all rounded-xl duration-200 ease-in-out flex-col bg-white"
+        `transition-all duration-200 ease-in-out flex flex-col ` +
+        (isExpanded ? "w-full h-full" : "w-0 h-full opacity-0")
       }
-      ref={eventLogsContainerRef}
     >
       {isExpanded && (
-        <div>
-          <div className="flex items-center justify-between px-6 py-3.5 sticky top-0 z-10 text-base border-b bg-white rounded-t-xl dark:bg-gray-800 dark:border-gray-700">
-            <span className="font-semibold dark:text-gray-200">Logs {filterByConversationId ? `(Filtered: ${filterByConversationId.substring(0,6)}...)` : '(All)'}</span>
+        <> {/* Use Fragment as we don't need an extra div for styling here */}
+          <div className="flex items-center justify-between px-4 py-3 sticky top-0 z-10 text-base border-b border-gray-600 bg-gray-750 rounded-t-lg dark:bg-gray-850 dark:border-gray-700"> {/* Header, adjusted padding/bg */}
+            <span className="font-semibold text-gray-100 dark:text-gray-200">
+              {filterByConversationId
+                ? `Logs (Filtered: ${filterByConversationId.substring(0,6)}...)`
+                : "Logs (All)"}
+            </span>
+            {/* Maybe a clear filter button or other controls here later */}
           </div>
-          <div>
-            {eventsToDisplay.map((log, idx) => { // Use eventsToDisplay
+          <div // This is the scrollable container for log items
+            className="flex-grow overflow-y-auto custom-scrollbar p-1 bg-gray-700 dark:bg-gray-800" // Ensure background for scroll area
+            ref={eventLogsContainerRef} // Moved ref here for scrolling content, not header
+          >
+            {eventsToDisplay.length === 0 && (
+              <div className="text-center text-gray-400 dark:text-gray-500 py-10">No events to display.</div>
+            )}
+            {eventsToDisplay.map((log, idx) => {
               const arrowInfo = getDirectionArrow(log.direction);
               const isError =
                 log.eventName.toLowerCase().includes("error") ||
@@ -58,23 +68,23 @@ function Events({ isExpanded, filterByConversationId }: EventsProps) { // Added 
 
               return (
                 <div
-                  key={`${log.id}-${idx}`} // Assuming log.id might not be unique enough if logs reset, idx helps
-                  className="border-t border-gray-200 py-2 px-6 font-mono dark:border-gray-700"
+                  key={`${log.id}-${idx}`}
+                  className={`border-b border-gray-600 dark:border-gray-700 py-1.5 px-2 font-mono text-xs hover:bg-gray-650 dark:hover:bg-gray-750 transition-colors duration-100 ${isError ? "bg-red-900/20 hover:bg-red-800/30" : ""}`} // Adjusted padding/border
                 >
                   <div
                     onClick={() => toggleExpand(log.id)}
                     className="flex items-center justify-between cursor-pointer"
                   >
-                    <div className="flex items-center flex-1 min-w-0"> {/* Added min-w-0 for better truncation */}
+                    <div className="flex items-center flex-1 min-w-0">
                       <span
                         style={{ color: arrowInfo.color }}
-                        className="ml-1 mr-2"
+                        className="ml-1 mr-2 text-sm" // Slightly larger arrow
                       >
                         {arrowInfo.symbol}
                       </span>
                       {log.conversationId && (
                         <span
-                          className="text-xs text-purple-600 dark:text-purple-400 mr-1 select-all cursor-pointer hidden md:inline"
+                          className="text-xs text-purple-400 dark:text-purple-300 mr-1.5 select-all cursor-pointer hidden md:inline hover:underline"
                           title={log.conversationId}
                           onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(log.conversationId!) }}
                         >
@@ -83,27 +93,27 @@ function Events({ isExpanded, filterByConversationId }: EventsProps) { // Added 
                       )}
                       <span
                         className={
-                          "flex-1 text-sm truncate " + // Added truncate
-                          (isError ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-gray-200")
+                          "flex-1 text-xs truncate " +
+                          (isError ? "text-red-400 dark:text-red-300" : "text-gray-200 dark:text-gray-100")
                         }
-                        title={log.eventName} // Show full name on hover
+                        title={log.eventName}
                       >
                         {log.eventName}
                       </span>
                     </div>
-                    <div className="text-gray-500 dark:text-gray-400 ml-1 text-xs whitespace-nowrap">
+                    <div className="text-gray-400 dark:text-gray-500 ml-2 text-xs whitespace-nowrap">
                       {log.timestamp}
                     </div>
                   </div>
 
                   {log.expanded && log.eventData && (
-                    <div className="text-gray-800 dark:text-gray-200 text-left mt-1">
+                    <div className="text-gray-300 dark:text-gray-200 text-left mt-1.5 ml-2 pl-2 border-l-2 border-gray-500 dark:border-gray-600">
                       {log.conversationId && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 ml-1">
-                          Conv. ID: <span className="select-all cursor-pointer" onClick={() => navigator.clipboard.writeText(log.conversationId!)}>{log.conversationId}</span>
+                        <div className="text-2xs text-gray-400 dark:text-gray-500 mb-1"> {/* Adjusted size */}
+                          Conv. ID: <span className="select-all cursor-pointer hover:underline" onClick={() => navigator.clipboard.writeText(log.conversationId!)}>{log.conversationId}</span>
                         </div>
                       )}
-                      <pre className="border-l-2 ml-1 border-gray-200 dark:border-gray-600 whitespace-pre-wrap break-words font-mono text-xs mb-2 mt-2 pl-2 bg-gray-50 dark:bg-gray-700/30 p-1.5 rounded">
+                      <pre className="whitespace-pre-wrap break-all font-mono text-2xs mb-1 p-1.5 rounded bg-gray-650 dark:bg-gray-750 custom-scrollbar-small"> {/* Adjusted size and bg */}
                         {JSON.stringify(log.eventData, null, 2)}
                       </pre>
                     </div>
@@ -112,7 +122,7 @@ function Events({ isExpanded, filterByConversationId }: EventsProps) { // Added 
               );
             })}
           </div>
-        </div>
+        </>
       )}
     </div>
   );

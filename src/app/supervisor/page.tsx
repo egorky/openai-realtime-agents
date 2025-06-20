@@ -256,16 +256,34 @@ function SupervisorApp() {
       // let agentsToConnect = [...scenarioInfo.scenario]; // shallow copy of the array
       // Deep clone and modify agents to use the editable metaprompt
       let agentsToConnect = scenarioInfo.scenario.map(agentConfig => {
-        const clonedAgentConfig = JSON.parse(JSON.stringify(agentConfig)); // Deep clone
-        clonedAgentConfig.prompt = editableMetaprompt; // Override or set the prompt
+        // Create a structured clone, ensuring essential array properties like 'tools' are present.
+        const originalTools = agentConfig.tools || []; // Default to empty array if tools is undefined/null
+
+        // Perform a deep clone, but be mindful of functions or complex objects not handled by JSON.stringify/parse.
+        // For agent configs that are primarily data, JSON cloning is usually okay.
+        const clonedAgentConfig = JSON.parse(JSON.stringify({
+          ...agentConfig,
+          tools: originalTools, // Explicitly include tools, ensuring it's an array
+        }));
+
+        clonedAgentConfig.prompt = editableMetaprompt;
+
+        // Ensure 'tools' is an array on the cloned object, even if originalTools was empty.
+        // This step might be redundant if the spread above and stringify/parse correctly handle it,
+        // but it's a strong guarantee.
+        if (!Array.isArray(clonedAgentConfig.tools)) {
+          clonedAgentConfig.tools = [];
+        }
+
         return clonedAgentConfig;
       });
 
       // Now, apply agent-specific edited texts for the selected agent
       if (editableAgentSpecificTexts) {
-        agentsToConnect = agentsToConnect.map(agentConfig => {
-          if (agentConfig.name === currentAgentName) {
-            const updatedAgentConfig = { ...agentConfig }; // Shallow copy this specific agent config
+        agentsToConnect = agentsToConnect.map(agentConfigFromFirstPass => { // Renamed for clarity
+          if (agentConfigFromFirstPass.name === currentAgentName) {
+            // agentConfigFromFirstPass already has .prompt and a guaranteed .tools array
+            const updatedAgentConfig = { ...agentConfigFromFirstPass };
             if (typeof editableAgentSpecificTexts.greeting === 'string') {
               updatedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
             }
@@ -274,7 +292,7 @@ function SupervisorApp() {
             }
             return updatedAgentConfig;
           }
-          return agentConfig;
+          return agentConfigFromFirstPass;
         });
       }
 
@@ -289,6 +307,28 @@ function SupervisorApp() {
 
 
       const guardrail = createModerationGuardrail(scenarioInfo.companyName);
+
+      console.log("Supervisor: Attempting to connect with initialAgents:", JSON.stringify(agentsToConnect, null, 2));
+      // This will show the exact structure being passed to the SDK.
+      // Ensure agentsToConnect itself is an array.
+      if (!Array.isArray(agentsToConnect)) {
+          console.error("Supervisor: CRITICAL - agentsToConnect is not an array before connect call!");
+          // Potentially set an error state and return, preventing the connect call.
+          setSessionStatus("DISCONNECTED"); // Or a new "ERROR" status
+          logClientEvent({type: "system.error", message: "Supervisor: agentsToConnect is not an array"}, "supervisor_connect_fail_critical", newConvId);
+          return;
+      }
+      agentsToConnect.forEach((agent, index) => {
+          if (!agent || typeof agent !== 'object') {
+              console.error(`Supervisor: CRITICAL - agent at index ${index} is not an object:`, agent);
+          }
+          if (agent && !Array.isArray(agent.tools)) {
+              console.warn(`Supervisor: Agent ${agent.name || `at index ${index}`} has non-array tools property:`, agent.tools);
+              // Optionally, force agent.tools to be an array here if found to be problematic,
+              // though the mapping above should have already handled it.
+              // agent.tools = [];
+          }
+      });
 
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
