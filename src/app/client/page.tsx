@@ -157,18 +157,50 @@ function ClientApp() {
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
     logClientEvent({ url: "/session" }, "fetch_session_token_request");
-    const tokenResponse = await fetch("/api/session");
-    const data = await tokenResponse.json();
-    logServerEvent(data, "fetch_session_token_response");
+    let tokenResponseMessage = "Error: Could not obtain session token."; // Default error message
 
-    if (!data.client_secret?.value) {
-      logClientEvent(data, "error.no_ephemeral_key");
-      console.error("No ephemeral key provided by the server");
+    try {
+      const tokenResponse = await fetch("/api/session");
+      const data = await tokenResponse.json();
+      logServerEvent(data, "fetch_session_token_response");
+
+      if (!tokenResponse.ok) {
+        // Server responded with an error status (4xx, 5xx)
+        // `data` should contain the error structure from our API route
+        const serverError = data.error || "Unknown server error";
+        const errorDetails = data.details ? (typeof data.details === 'string' ? data.details : JSON.stringify(data.details)) : "";
+        tokenResponseMessage = `Error: ${serverError}${errorDetails ? ` (Details: ${errorDetails})` : ''}`;
+
+        console.error(`Failed to fetch ephemeral key: ${tokenResponse.status} ${tokenResponse.statusText}`, data);
+        logClientEvent({ error: serverError, details: data.details, status: tokenResponse.status }, "error.fetch_ephemeral_key_failed_status");
+        setSessionStatus("DISCONNECTED");
+        addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
+        return null;
+      }
+
+      if (!data.client_secret?.value) {
+        // Server responded with 200 OK, but the key is missing in the response.
+        // This case is now less likely if the server-side check is robust, but good to keep.
+        tokenResponseMessage = data.error ? `Error: ${data.error}` : "Error: Session token not found in server response.";
+        console.error("No ephemeral key provided by the server, though response was OK:", data);
+        logClientEvent(data, "error.no_ephemeral_key_value");
+        setSessionStatus("DISCONNECTED");
+        addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
+        return null;
+      }
+
+      // Success case
+      return data.client_secret.value;
+
+    } catch (error: any) {
+      // Catch network errors or issues with `tokenResponse.json()` if response isn't valid JSON
+      console.error("Network or parsing error fetching ephemeral key:", error);
+      tokenResponseMessage = `Error: Network or server communication issue. ${error.message || ""}`;
+      logClientEvent({ error: error.message, type: error.type }, "error.fetch_ephemeral_key_network_or_parse");
       setSessionStatus("DISCONNECTED");
-      addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: Could not obtain session token.", true);
+      addTranscriptMessage(uuidv4().slice(0,32), "system", tokenResponseMessage, true);
       return null;
     }
-    return data.client_secret.value;
   };
 
   const connectToRealtime = async () => {

@@ -10,7 +10,9 @@ if (certPath && keyPath) {
   console.log(" volonté: ensure you have generated these certificate files (e.g., using mkcert),");
   console.log(" volonté: and modify your 'dev' script in package.json to include:");
   console.log(" volonté:   next dev --experimental-https --experimental-https-key $HTTPS_KEY_PATH --experimental-https-cert $HTTPS_CERT_PATH");
-  console.log(" volonté: Or directly: next dev --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem");
+  console.log(" volonté: Or (recommended for simplicity): next dev --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem");
+  console.log(" volonté: IMPORTANT: You MUST manually edit the 'dev' script in your package.json for these flags to take effect.");
+  console.log(" volonté: The .env variables are for your convenience in managing paths but don't automatically configure the server's startup.");
   console.log(" volonté: (Replace ./localhost-key.pem and ./localhost.pem with your actual file paths if different from .env)");
 } else {
   console.warn("volonté: HTTPS_CERT_PATH or HTTPS_KEY_PATH environment variables are not set.");

@@ -34,16 +34,30 @@ yarn install
 **3. Running the Development Server:**
 
 *   **With HTTPS (recommended for features like microphone access):**
-    Modify the `dev` script in your `package.json` to include the experimental HTTPS flags and your certificate paths (values from `.env` can be used if your shell/environment supports it, or hardcode paths):
+
+    **Important:** For HTTPS to work during local development, you **must manually edit** your `package.json` file. The Next.js development server needs the certificate paths passed directly as command-line arguments. The `.env` variables `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` are provided for your convenience to store these paths, but the application code itself cannot dynamically configure the Next.js server's startup flags with these.
+
+    Modify the `dev` script in your `package.json` as shown below. Choose one of the options:
+
+    Option 1: Using environment variables from your shell (if supported, e.g., on Linux/macOS):
     ```json
     // package.json
     "scripts": {
       // ... other scripts
       "dev": "next dev --experimental-https --experimental-https-key $HTTPS_KEY_PATH --experimental-https-cert $HTTPS_CERT_PATH"
-      // Or, using default paths if you generated certs in the root:
-      // "dev": "next dev --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem"
     },
     ```
+    *(Ensure `HTTPS_KEY_PATH` and `HTTPS_CERT_PATH` are exported or available in your shell environment if you use this method.)*
+
+    Option 2: Using fixed paths (recommended for simplicity if paths don't change often):
+    ```json
+    // package.json
+    "scripts": {
+      // ... other scripts
+      "dev": "next dev --experimental-https --experimental-https-key ./localhost-key.pem --experimental-https-cert ./localhost.pem"
+    },
+    ```
+    *(This assumes `localhost-key.pem` and `localhost.pem` are in your project root, matching the `.env` example.)*
     Then run:
     ```bash
     npm run dev
