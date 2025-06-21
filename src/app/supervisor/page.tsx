@@ -123,11 +123,14 @@ function SupervisorApp() {
       const stored = localStorage.getItem('supervisorLogsExpanded');
       return stored ? stored === 'true' : true; // Default to true for supervisor
   });
-  const [isAudioPlaybackEnabled, setIsAudioPlaybackEnabled] = useState<boolean>(() => { // For supervisor to listen
-    if (typeof window === 'undefined') return true;
-    const stored = localStorage.getItem('supervisorAudioPlaybackEnabled');
-    return stored ? stored === 'true' : true;
-  });
+
+  // Hydration fix: Initialize with a server-consistent value, then update from localStorage in useEffect
+  const [isAudioPlaybackEnabled, setIsAudioPlaybackEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    const storedAudioEnabled = localStorage.getItem('supervisorAudioPlaybackEnabled');
+    setIsAudioPlaybackEnabled(storedAudioEnabled ? storedAudioEnabled === 'true' : true);
+  }, []);
 
 
   useHandleSessionHistory(); // May or may not be relevant for supervisor, but harmless
@@ -240,16 +243,22 @@ function SupervisorApp() {
 
     // Use editableScenarios for connection
     const scenarioDetails = editableScenarios[currentAgentSetKey];
-    if (!scenarioDetails || !Array.isArray(scenarioDetails.scenario)) {
-      console.error(`Supervisor: Scenario not found or invalid in editableScenarios for key ${currentAgentSetKey}`);
+    if (!scenarioDetails) {
+      console.error(`Supervisor: Scenario details not found for key ${currentAgentSetKey}`);
       setSessionStatus("DISCONNECTED");
-      // Log appropriate event
+      logClientEvent({type: "system.error", message: `Supervisor: Scenario details not found for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
+      return;
+    }
+    if (!Array.isArray(scenarioDetails.scenario) || scenarioDetails.scenario.length === 0) {
+      console.error(`Supervisor: Scenario array is invalid or empty for key ${currentAgentSetKey}`);
+      setSessionStatus("DISCONNECTED");
+      logClientEvent({type: "system.error", message: `Supervisor: Scenario array invalid/empty for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
       return;
     }
     if (!currentAgentName) {
       console.error(`Supervisor: No agent selected for scenario ${currentAgentSetKey}.`);
       setSessionStatus("DISCONNECTED");
-      // Log appropriate event
+      logClientEvent({type: "system.error", message: `Supervisor: No agent selected for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
       return;
     }
 
@@ -261,24 +270,47 @@ function SupervisorApp() {
       const EPHEMERAL_KEY = await fetchEphemeralKey();
       if (!EPHEMERAL_KEY) return;
 
-      let processedAgents = scenarioDetails.scenario.map(originalAgentConfig => {
-        let modifiedAgentConfig = { ...originalAgentConfig };
-        if (originalAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
-          if (typeof editableAgentSpecificTexts.greeting === 'string') {
-            modifiedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
+      let processedAgents = scenarioDetails.scenario
+        .filter(agent => agent && typeof agent === 'object') // Ensure agent is a valid object
+        .map(originalAgentConfig => {
+          // Ensure originalAgentConfig is not null and is an object, though filter should handle null/undefined
+          if (!originalAgentConfig) return null;
+
+          let modifiedAgentConfig = { ...originalAgentConfig };
+
+          // Apply agent-specific overrides for greeting and instructions
+          if (originalAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
+            if (typeof editableAgentSpecificTexts.greeting === 'string') {
+              modifiedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
+            }
+            if (typeof editableAgentSpecificTexts.instructions === 'string') {
+              modifiedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
+            }
           }
-          if (typeof editableAgentSpecificTexts.instructions === 'string') {
-            modifiedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
+
+          // Ensure 'tools' is an array, default to empty array if not present or not an array
+          if (!Array.isArray(modifiedAgentConfig.tools)) {
+            modifiedAgentConfig.tools = [];
           }
-        }
-        if (!Array.isArray(modifiedAgentConfig.tools)) {
-          modifiedAgentConfig.tools = [];
-        }
-        // Apply model and voice from the agent config if they exist
-        // These are standard RealtimeAgent properties, so they should be part of `originalAgentConfig`
-        // if set during scenario editing.
-        return modifiedAgentConfig;
-      });
+
+          // Ensure other potentially problematic properties are well-defined if necessary
+          // For example, ensure 'name' is a string, 'model' and 'voice' are strings if defined.
+          modifiedAgentConfig.name = String(modifiedAgentConfig.name || 'UnnamedAgent');
+          if (typeof modifiedAgentConfig.model !== 'string' && modifiedAgentConfig.model !== undefined) {
+             // console.warn("Agent model is not a string, attempting to stringify or default", modifiedAgentConfig.model);
+             modifiedAgentConfig.model = "gpt-4o-mini-realtime-preview"; // Default or handle appropriately
+          }
+
+
+          return modifiedAgentConfig;
+        }).filter(agent => agent !== null) as RealtimeAgent[]; // Filter out any nulls from map and cast
+
+      if (processedAgents.length === 0) {
+        console.error(`Supervisor: No valid agents to connect after processing for scenario ${currentAgentSetKey}.`);
+        setSessionStatus("DISCONNECTED");
+        logClientEvent({type: "system.error", message: `No valid agents after processing for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
+        return;
+      }
 
       const currentAgentIndex = processedAgents.findIndex(agent => agent.name === currentAgentName);
       if (currentAgentIndex > 0) {

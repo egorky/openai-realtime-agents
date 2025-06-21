@@ -19,22 +19,22 @@ import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 // Client will use a more restricted set of agent configurations.
-import { allAgentSets, defaultAgentSetKey as globalDefaultAgentSetKey } from "@/app/agentConfigs";
 import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-// Import other client-specific scenarios if needed, e.g., simpleHandoffScenario
-// import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
+import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
+import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor"; // Corrected path
 
 // Client-specific map for scenarios. Only include scenarios a client can initiate.
 // Added displayName for the dropdown
 const clientSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }> = {
   customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName, displayName: "Servicio al Cliente (Retail)" },
-  // Example: If simpleHandoff is a client-selectable scenario:
-  // simpleHandoff: { scenario: simpleHandoffScenario, companyName: "YourSimpleHandoffService", displayName: "Soporte Simple" },
+  simpleHandoff: { scenario: simpleHandoffScenario, companyName: "Haiku Services Inc.", displayName: "Asistente de Haikus" }, // Provided a company name
+  chatSupervisor: { scenario: chatSupervisorScenario, companyName: chatSupervisorCompanyName, displayName: "Demo Supervisor (Cliente)" }, // Used imported company name
 };
 
 // Determine a safe default agent key for the client page.
 // It must be one of the keys in clientSdkScenarioMap.
-const clientDefaultAgentSetKey = Object.keys(clientSdkScenarioMap)[0] || 'customerServiceRetail';
+// If clientSdkScenarioMap is empty, this will be undefined, which needs careful handling or a hardcoded default.
+const clientDefaultAgentSetKey = Object.keys(clientSdkScenarioMap)[0] || 'customerServiceRetail'; // Fallback to a known key if map somehow empty or first key is problematic
 
 
 import useAudioDownload from "@/app/hooks/useAudioDownload";

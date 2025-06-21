@@ -101,7 +101,7 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
       scenario: [{ // Default agent structure
         name: "defaultAgent",
         instructions: "Default instructions",
-        model: "gpt-3.5-turbo",
+        model: "gpt-4o-mini-realtime-preview",
         voice: "alloy",
         tools: [],
       }],
@@ -145,6 +145,10 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
   // Component for editing a single agent within a scenario
   const AgentEditor: React.FC<{ agent: RealtimeAgent, onChange: (updatedAgent: RealtimeAgent) => void, onDelete: () => void }> = ({ agent, onChange, onDelete }) => {
     const [localAgent, setLocalAgent] = React.useState<RealtimeAgent>(agent);
+
+    React.useEffect(() => {
+      setLocalAgent(agent);
+    }, [agent]); // Re-synchronize when the agent prop changes
 
     // Update local state and propagate changes when an input field changes
     const handleChange = (field: keyof RealtimeAgent, value: any) => {
@@ -238,7 +242,7 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
         </div>
         <button
           onClick={() => {
-            const newAgent: RealtimeAgent = { name: `agent${editingScenario.data.scenario.length + 1}`, instructions: "", model: "gpt-3.5-turbo", voice: "alloy", tools: [] };
+            const newAgent: RealtimeAgent = { name: `agent${editingScenario.data.scenario.length + 1}`, instructions: "", model: "gpt-4o-mini-realtime-preview", voice: "alloy", tools: [] };
             setEditingScenario({ ...editingScenario, data: { ...editingScenario.data, scenario: [...editingScenario.data.scenario, newAgent] } });
           }}
           className="bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2 rounded text-sm mt-3 transition-colors"
@@ -326,6 +330,9 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
           <span className="ml-1.5 text-gray-300">Audio</span>
         </label>
       </div>
+      <p className="text-xs text-gray-400 px-2 pb-1">
+        Nota: El botón "Connect" inicia una sesión de monitoreo/prueba con la configuración de IA seleccionada. No es para conversar como cliente.
+      </p>
 
       {/* Metaprompt Editing Section */}
       <div className="w-full p-3 bg-gray-600 rounded-md shadow">

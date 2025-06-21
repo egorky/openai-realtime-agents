@@ -3,6 +3,7 @@ import { RealtimeAgent, tool, RealtimeItem } from '@openai/agents/realtime';
 export const returnsAgent = new RealtimeAgent({
   name: 'returns',
   voice: 'sage',
+  model: "gpt-4o-mini-realtime-preview",
   handoffDescription:
     'Customer Service Agent specialized in order lookups, policy checks, and return initiations.',
 
