@@ -129,11 +129,22 @@ function ClientApp() {
   useEffect(() => {
     const agentConfigFromUrl = searchParams.get("agentConfig");
     const modeFromUrl = searchParams.get("displayMode");
+    const conversationIdFromUrl = searchParams.get("conversationId");
 
     if (modeFromUrl === 'widget') {
       setDisplayMode('widget');
     } else {
       setDisplayMode('full');
+    }
+
+    // If conversationId is in URL, set it. This might be from "maximizing" a widget.
+    // Note: This doesn't automatically "resume" the SDK session, but makes the app aware of the ID.
+    if (conversationIdFromUrl) {
+      setCurrentConversationId(conversationIdFromUrl);
+      // If a conversationId is passed, we assume scenario selection is implicitly done
+      // or that the agentConfig will also be passed to define the scenario.
+      // For simplicity, if conversationId is present, we might bypass scenario selection UI
+      // if agentConfig is also present.
     }
 
     if (agentConfigFromUrl && clientSdkScenarioMap[agentConfigFromUrl]) {
@@ -142,28 +153,56 @@ function ClientApp() {
         setCurrentAgentName(clientSdkScenarioMap[agentConfigFromUrl].scenario[0].name);
       }
       setScenarioSelectionCompleted(true);
-    } else if (agentConfigFromUrl) {
+    } else if (agentConfigFromUrl) { // Invalid agentConfig in URL
       console.warn(`Client: Agent config "${agentConfigFromUrl}" from URL is not recognized or allowed. Defaulting to selection.`);
       setSelectedScenarioKeyForUI(clientDefaultAgentSetKey);
       setScenarioSelectionCompleted(false);
-    } else {
-      setScenarioSelectionCompleted(false);
+    } else { // No agentConfig in URL
+      // If conversationId is present from URL but no agentConfig, scenario selection is still needed.
+      // If no conversationId and no agentConfig, then normal scenario selection.
+      if (!conversationIdFromUrl) { // Only force scenario selection if no conversationId is trying to be restored
+        setScenarioSelectionCompleted(false);
+      }
+      // If conversationId IS present, but no agentConfig, what happens to scenarioSelectionCompleted?
+      // It might remain true if set by a previous condition, or false if this is the first path.
+      // Let's ensure it's false if no agentConfig is resolved, unless a conversationId implies a context.
+      // For now, if agentConfig is missing, we show selection.
+      // This means if a maximized window has conversationId but no agentConfig, it will ask for scenario.
+      // To improve: if conversationId is passed, agentConfig should also be passed.
+      if (!agentConfigFromUrl) {
+         setScenarioSelectionCompleted(false);
+      }
     }
   }, [searchParams]);
 
 
   // Auto-connect after scenario selection is completed and valid agent key/name are set
+  // OR if displayMode is 'full' and conversationId was passed (implying a "maximization" attempt)
   useEffect(() => {
+    // Do not auto-connect if currentConversationId was set from URL (maximization)
+    // because connectToRealtime generates a *new* conversationId.
+    // The user would need to manually connect if they want a new session in the maximized view.
+    // If we wanted to "re-join" or "observe" a session, SDK and backend would need to support it.
+    if (searchParams.get("conversationId")) {
+        // If a conversationId is from URL, we are likely trying to view an existing/past one.
+        // We might want to load its transcript from localStorage/context if available, but not auto-connect a new session.
+        // For now, simply log and prevent auto-connect for this case.
+        console.log("Client: conversationId present in URL, auto-connect skipped. Displaying context for:", searchParams.get("conversationId"));
+        // Potentially add a message to transcript: "Visualizando conversación [ID]. Conéctese para iniciar una nueva interacción."
+        addTranscriptMessage(uuidv4().slice(0,32), "system", `Visualizando contexto de conversación anterior. Conéctese para iniciar una nueva interacción si lo desea.`, false);
+        return;
+    }
+
     if (scenarioSelectionCompleted && selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED" && !userIntentionalDisconnect) {
       const scenarioInfo = clientSdkScenarioMap[selectedAgentKey];
       if (scenarioInfo && scenarioInfo.scenario.find(a => a.name === currentAgentName)) {
-        connectToRealtime();
+        connectToRealtime(); // This will generate a new currentConversationId
       } else {
         console.warn("Client: Auto-connect skipped post-selection. Agent config or name invalid/missing:", selectedAgentKey, currentAgentName);
         addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: No se pudo iniciar la conexión. Configuración de agente inválida.", true);
       }
     }
-  }, [scenarioSelectionCompleted, selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect]);
+  }, [scenarioSelectionCompleted, selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect, searchParams]);
 
    useEffect(() => {
     if (sessionStatus === "CONNECTED" && selectedAgentKey && clientSdkScenarioMap[selectedAgentKey] && currentAgentName) {
@@ -171,10 +210,13 @@ function ClientApp() {
       if (handoffTriggeredRef.current) {
          addTranscriptBreadcrumb(`Agent: ${currentAgentName}`, currentAgentConfig);
       }
-      updateSession(!handoffTriggeredRef.current); // Trigger initial greeting if not a handoff
+      // Only trigger initial greeting if it's not a restored/maximized conversation view
+      if (!searchParams.get("conversationId")) {
+        updateSession(!handoffTriggeredRef.current);
+      }
       handoffTriggeredRef.current = false;
     }
-  }, [selectedAgentKey, currentAgentName, sessionStatus]);
+   }, [selectedAgentKey, currentAgentName, sessionStatus, searchParams]);
 
 
   useEffect(() => {
@@ -524,6 +566,7 @@ function ClientApp() {
         <WidgetHeader
           scenarioDisplayName={clientSdkScenarioMap[selectedAgentKey]?.displayName || "Asistente"}
           selectedAgentKey={selectedAgentKey}
+          currentConversationId={currentConversationId} // Pass currentConversationId
         />
       ) : (
         <div className="p-2 sm:p-4 text-lg sm:text-xl font-semibold flex justify-start items-center border-b bg-white shadow-sm">

@@ -5,15 +5,20 @@ import { ExitFullScreenIcon, Cross1Icon } from "@radix-ui/react-icons"; // Using
 
 interface WidgetHeaderProps {
   scenarioDisplayName?: string;
-  selectedAgentKey?: string; // To pass to window.open for full view
-  onClose?: () => void; // Optional: if the widget itself can request to be hidden (via postMessage)
+  selectedAgentKey?: string;
+  currentConversationId?: string | null; // Added
+  onClose?: () => void;
 }
 
-const WidgetHeader: React.FC<WidgetHeaderProps> = ({ scenarioDisplayName, selectedAgentKey, onClose }) => {
+const WidgetHeader: React.FC<WidgetHeaderProps> = ({ scenarioDisplayName, selectedAgentKey, currentConversationId, onClose }) => {
   const handleMaximize = () => {
-    // Open the full client page in a new tab/window
-    // Pass current agentConfig if available, so the full page opens with the same scenario
-    const targetUrl = selectedAgentKey ? `/client?agentConfig=${selectedAgentKey}` : '/client';
+    let targetUrl = "/client?displayMode=full"; // Always open in full mode
+    if (selectedAgentKey) {
+      targetUrl += `&agentConfig=${selectedAgentKey}`;
+    }
+    if (currentConversationId) {
+      targetUrl += `&conversationId=${currentConversationId}`;
+    }
     window.open(targetUrl, '_blank');
   };
 

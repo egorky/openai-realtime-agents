@@ -33,7 +33,12 @@ function Transcript({
   // Auto-scroll to bottom
   useEffect(() => {
     if (transcriptContainerRef.current && transcriptItems.length > prevLogsLength) {
-      transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
+      // Ensure scroll happens after DOM update and paint
+      requestAnimationFrame(() => {
+        if (transcriptContainerRef.current) { // Check ref again as it might have changed
+          transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
+        }
+      });
     }
     setPrevLogsLength(transcriptItems.length);
   }, [transcriptItems, prevLogsLength]);
