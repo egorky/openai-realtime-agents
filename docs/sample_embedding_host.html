@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Página de Muestra para Embeber Widget de Chat IA</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+            line-height: 1.6;
+        }
+        .content {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        p {
+            margin-bottom: 1em;
+        }
+
+        /* Estilos para el botón de toggle del chat */
+        #toggleChatButton {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 24px; /* Tamaño del icono/texto */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 1001; /* Asegura que esté sobre el widget si el widget se oculta */
+            transition: background-color 0.3s ease;
+        }
+        #toggleChatButton:hover {
+            background-color: #0056b3;
+        }
+
+        /* Estilos para el iframe del widget de chat */
+        #aiChatWidget {
+            position: fixed;
+            bottom: 90px; /* Posicionado encima del botón de toggle */
+            right: 20px;
+            width: 370px;  /* Ancho recomendado para el modo widget */
+            height: 600px; /* Altura recomendada para el modo widget */
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: none; /* Inicialmente oculto */
+            overflow: hidden; /* Para que el contenido del iframe no se desborde */
+            z-index: 1000;
+            background-color: #fff; /* Fondo por si el iframe tarda en cargar */
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <h1>Página de Ejemplo</h1>
+        <p>Este es un ejemplo de una página web que puede hospedar el widget de chat con IA.</p>
+        <p>El widget de chat debería aparecer cuando hagas clic en el botón flotante en la esquina inferior derecha.</p>
+        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+    </div>
+
+    <button id="toggleChatButton" title="Abrir Chat">
+        <!-- Icono de Chat SVG simple -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+    </button>
+
+    <iframe
+        id="aiChatWidget"
+        src="https://REEMPLAZAR-CON-URL-APP-CLIENTE-DESPLEGADA/client?displayMode=widget&agentConfig=customerServiceRetail"
+        title="Asistente de Chat IA"
+        allow="microphone; clipboard-write; autoplay"
+        frameborder="0">
+        <!-- El atributo frameborder está obsoleto en HTML5, se usa CSS (border: none;) pero algunos navegadores aún lo respetan -->
+    </iframe>
+
+    <script>
+        const toggleButton = document.getElementById('toggleChatButton');
+        const chatWidget = document.getElementById('aiChatWidget');
+        let isWidgetOpen = false;
+
+        // Reemplaza esta URL con la URL real de tu aplicación cliente desplegada
+        const clientAppUrl = "https://REEMPLAZAR-CON-URL-APP-CLIENTE-DESPLEGADA/client?displayMode=widget&agentConfig=customerServiceRetail";
+        // Es importante que el src del iframe se establezca dinámicamente si quieres asegurarte
+        // de que se carga solo al hacer clic, o si la URL puede cambiar.
+        // Por simplicidad, este ejemplo lo tiene en el HTML, pero para producción considera establecerlo aquí.
+        // chatWidget.src = clientAppUrl; // Descomentar si se quiere cargar el src dinámicamente
+
+        toggleButton.addEventListener('click', () => {
+            isWidgetOpen = !isWidgetOpen;
+            if (isWidgetOpen) {
+                chatWidget.style.display = 'block';
+                // Opcional: cambiar el icono del botón de toggle a "cerrar"
+                toggleButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
+                toggleButton.title = "Cerrar Chat";
+            } else {
+                chatWidget.style.display = 'none';
+                // Opcional: cambiar el icono del botón de toggle a "abrir"
+                toggleButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+                toggleButton.title = "Abrir Chat";
+            }
+        });
+
+        // (Opcional) Escuchar mensajes del iframe para cerrar el widget desde dentro del iframe
+        // window.addEventListener('message', (event) => {
+        //   // IMPORTANTE: Siempre verifica el origen del mensaje por seguridad
+        //   if (event.origin !== 'https://REEMPLAZAR-CON-URL-APP-CLIENTE-DESPLEGADA') {
+        //     return;
+        //   }
+        //   if (event.data && event.data.type === 'aiChatWidgetCloseRequest') {
+        //     chatWidget.style.display = 'none';
+        //     isWidgetOpen = false;
+        //     toggleButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+        //     toggleButton.title = "Abrir Chat";
+        //   }
+        // });
+    </script>
+</body>
+</html>
