@@ -59,8 +59,8 @@ function SupervisorApp() {
   const [currentAgentSetKey, setCurrentAgentSetKey] = useState<string>(defaultAgentSetKey);
   const [currentAgentName, setCurrentAgentName] = useState<string>("");
   const [currentAgentConfigSet, setCurrentAgentConfigSet] = useState<RealtimeAgent[] | null>(null);
-  const [editableMetaprompt, setEditableMetaprompt] = useState<string>("");
-  const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(""); // To allow reset
+  // const [editableMetaprompt, setEditableMetaprompt] = useState<string>(""); // DUPLICATE - REMOVED
+  // const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(""); // REMOVED - Settings page handles its own original/reset logic
   const [editableAgentSpecificTexts, setEditableAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
   const [originalAgentSpecificTexts, setOriginalAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
   const [currentAgentTools, setCurrentAgentTools] = useState<SimpleToolDefinition[] | null>(null);
