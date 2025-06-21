@@ -21,25 +21,46 @@ const INITIAL_METAPROMPT_CONTENT = `Eres un asistente de IA de voz. Responde al 
 <TOOL_DESCRIPTIONS>`;
 
 function SupervisorSettingsPage() {
-  // State for managing scenarios (volatile, not persisted beyond this page/session unless localStorage is used)
+  // State for managing scenarios
   const [editableScenarios, setEditableScenarios] = useState<Record<string, SupervisorSdkScenario>>(() => {
-    // Deep copy for editing. Consider loading from localStorage if semi-persistence is desired
-    // For now, initialize from the base map.
+    if (typeof window !== 'undefined') {
+      const storedScenarios = localStorage.getItem("supervisorCustomScenarios");
+      // Only parse if storedScenarios is a non-empty string
+      if (storedScenarios && storedScenarios !== "undefined") {
+        try {
+          const parsed = JSON.parse(storedScenarios);
+          // Basic validation to ensure it's an object (scenario map)
+          if (typeof parsed === 'object' && parsed !== null) {
+            return parsed;
+          } else {
+            console.warn("Stored scenarios format is invalid, fallback to default.");
+          }
+        } catch (e) {
+          console.error("Failed to parse stored scenarios from localStorage on init", e);
+          // Fallback to default if parsing fails
+        }
+      }
+    }
+    // Default to a deep copy of supervisorSdkScenarioMap if not found in localStorage or if parsing failed/invalid
     return JSON.parse(JSON.stringify(supervisorSdkScenarioMap));
   });
+
   const [editingScenario, setEditingScenario] = useState<{ key: string, data: SupervisorSdkScenario } | null>(null);
-  const [isEditingMode, setIsEditingMode] = useState<boolean>(false); // To toggle scenario editing UI
+  const [isEditingMode, setIsEditingMode] = useState<boolean>(false);
 
   // State for metaprompt editing
-  const [editableMetaprompt, setEditableMetaprompt] = useState<string>(INITIAL_METAPROMPT_CONTENT);
-  const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(INITIAL_METAPROMPT_CONTENT);
+  const [editableMetaprompt, setEditableMetaprompt] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const storedMetaprompt = localStorage.getItem("supervisorCustomMetaprompt");
+      if (storedMetaprompt) {
+        return storedMetaprompt;
+      }
+    }
+    return INITIAL_METAPROMPT_CONTENT;
+  });
+  const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(INITIAL_METAPROMPT_CONTENT); // Keep this for reset functionality on this page
 
-  // TODO: Move scenario CRUD handlers (handleEditScenario, handleCreateNewScenario, handleSaveScenario, handleDeleteScenario) here
-  // TODO: Move AgentEditor component definition here or import from a shared location
-  // TODO: Move Metaprompt editing UI here
-  // TODO: Move Scenario Management UI (list, create, edit, delete buttons) here
-
-  // AgentEditor Component (copied from SupervisorControls.tsx and adapted)
+  // AgentEditor Component
   const AgentEditor: React.FC<{ agent: RealtimeAgent, onChange: (updatedAgent: RealtimeAgent) => void, onDelete: () => void }> = ({ agent: initialAgent, onChange, onDelete }) => {
     const [localAgent, setLocalAgent] = React.useState<RealtimeAgent>(initialAgent);
 

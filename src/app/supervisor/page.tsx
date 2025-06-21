@@ -33,15 +33,7 @@ interface SimpleToolDefinition {
   description?: string;
   parameters?: object; // JSON schema
 }
-import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
-import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff"; // Assuming a company name might be generic or defined elsewhere for this
-
-const supervisorSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }> = {
-  customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName, displayName: "Customer Service (Retail)" },
-  chatSupervisor: { scenario: chatSupervisorScenario, companyName: chatSupervisorCompanyName, displayName: "Chat Supervisor" },
-  simpleHandoff: { scenario: simpleHandoffScenario, companyName: "GenericHandoffInc", displayName: "Simple Handoff" }, // Example company name
-};
+import { supervisorSdkScenarioMap, defaultAgentSetKey as globalDefaultAgentSetKey } from "@/app/agentConfigs"; // Import the shared map
 
 
 import { useHandleSessionHistory } from "@/app/hooks/useHandleSessionHistory";
