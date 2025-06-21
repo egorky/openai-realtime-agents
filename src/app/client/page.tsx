@@ -40,6 +40,7 @@ const clientDefaultAgentSetKey = Object.keys(clientSdkScenarioMap)[0] || 'custom
 import useAudioDownload from "@/app/hooks/useAudioDownload";
 import { useHandleSessionHistory } from "@/app/hooks/useHandleSessionHistory";
 import ClientBottomToolbar from "@/app/components/ClientBottomToolbar";
+import WidgetHeader from "@/app/components/WidgetHeader"; // Import WidgetHeader
 
 function ClientApp() {
   const searchParams = useSearchParams()!;
@@ -47,6 +48,9 @@ function ClientApp() {
   const { addTranscriptMessage, addTranscriptBreadcrumb } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+
+  // State for display mode (full page or embedded widget)
+  const [displayMode, setDisplayMode] = useState<'full' | 'widget'>('full');
 
   // State for scenario selection step
   const [scenarioSelectionCompleted, setScenarioSelectionCompleted] = useState<boolean>(false);
@@ -121,10 +125,18 @@ function ClientApp() {
   useHandleSessionHistory();
 
   // Effect to handle scenario selection from URL (e.g., deep link) or set up for manual selection
+  // Also handles displayMode from URL
   useEffect(() => {
     const agentConfigFromUrl = searchParams.get("agentConfig");
+    const modeFromUrl = searchParams.get("displayMode");
+
+    if (modeFromUrl === 'widget') {
+      setDisplayMode('widget');
+    } else {
+      setDisplayMode('full');
+    }
+
     if (agentConfigFromUrl && clientSdkScenarioMap[agentConfigFromUrl]) {
-      // If a valid scenario is in URL, use it and proceed to chat
       setSelectedAgentKey(agentConfigFromUrl);
       if (clientSdkScenarioMap[agentConfigFromUrl]?.scenario[0]?.name) {
         setCurrentAgentName(clientSdkScenarioMap[agentConfigFromUrl].scenario[0].name);
@@ -132,11 +144,9 @@ function ClientApp() {
       setScenarioSelectionCompleted(true);
     } else if (agentConfigFromUrl) {
       console.warn(`Client: Agent config "${agentConfigFromUrl}" from URL is not recognized or allowed. Defaulting to selection.`);
-      // Invalid URL config, user will be shown selection page with default selected in dropdown
-      setSelectedScenarioKeyForUI(clientDefaultAgentSetKey); // Ensure dropdown shows a valid default
+      setSelectedScenarioKeyForUI(clientDefaultAgentSetKey);
       setScenarioSelectionCompleted(false);
     } else {
-      // No scenario in URL, user needs to select
       setScenarioSelectionCompleted(false);
     }
   }, [searchParams]);
@@ -424,10 +434,10 @@ function ClientApp() {
 
   if (!scenarioSelectionCompleted) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-gray-100 p-6">
-        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-6 text-gray-700 text-center">Seleccione un Escenario</h1>
-          <div className="mb-6">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 sm:p-6">
+        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-md">
+          <h1 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-700 text-center">Seleccione un Escenario</h1>
+          <div className="mb-4 sm:mb-6">
             <label htmlFor="scenario-select" className="block text-sm font-medium text-gray-700 mb-1">
               Escenario de Conversación:
             </label>
@@ -460,14 +470,68 @@ function ClientApp() {
     );
   }
 
-  return (
-    <div className="text-base flex flex-col h-screen bg-gray-50 text-gray-800 relative">
-      <div className="p-4 text-xl font-semibold flex justify-start items-center border-b bg-white shadow-sm">
-        <div>Client Support Portal: {clientSdkScenarioMap[selectedAgentKey]?.displayName || selectedAgentKey}</div>
-        {/* Add logo here if available */}
-      </div>
+  // Define container classes based on displayMode
+  const containerClasses = displayMode === 'widget'
+    ? "text-sm flex flex-col h-full w-full max-w-[370px] max-h-[700px] bg-gray-50 text-gray-800 relative shadow-2xl rounded-lg overflow-hidden"
+    : "text-base flex flex-col h-full min-h-screen bg-gray-50 text-gray-800 relative";
 
-      <div className="flex flex-1 gap-2 px-2 py-2 overflow-hidden relative">
+  if (!scenarioSelectionCompleted) {
+    // Scenario selection page also needs to respect displayMode for its container, or have simpler styling for widget
+    const selectionContainerClasses = displayMode === 'widget'
+      ? "flex flex-col items-center justify-center h-full bg-gray-100 p-4"
+      : "flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 sm:p-6";
+    const selectionBoxClasses = displayMode === 'widget'
+      ? "bg-white p-4 rounded-lg shadow-xl w-full"
+      : "bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-md";
+
+    return (
+      <div className={selectionContainerClasses}>
+        <div className={selectionBoxClasses}>
+          <h1 className={`font-bold mb-4 text-gray-700 text-center ${displayMode === 'widget' ? 'text-lg' : 'text-xl sm:text-2xl'}`}>
+            Seleccione Escenario
+          </h1>
+          <div className="mb-4">
+            <label htmlFor="scenario-select" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+              Conversación:
+            </label>
+            <select
+              id="scenario-select"
+              value={selectedScenarioKeyForUI}
+              onChange={(e) => handleScenarioSelection(e.target.value)}
+              className="mt-1 block w-full pl-2 pr-8 py-1.5 sm:pl-3 sm:pr-10 sm:py-2 text-xs sm:text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm"
+            >
+              {Object.entries(clientSdkScenarioMap).map(([key, { displayName }]) => (
+                <option key={key} value={key}>
+                  {displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleProceedToChat}
+            className={`w-full text-white font-semibold py-2 px-4 rounded-md text-xs sm:text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${displayMode === 'widget' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={containerClasses}>
+      {displayMode === 'widget' ? (
+        <WidgetHeader
+          scenarioDisplayName={clientSdkScenarioMap[selectedAgentKey]?.displayName || "Asistente"}
+          selectedAgentKey={selectedAgentKey}
+        />
+      ) : (
+        <div className="p-2 sm:p-4 text-lg sm:text-xl font-semibold flex justify-start items-center border-b bg-white shadow-sm">
+          <div>Portal de Soporte: {clientSdkScenarioMap[selectedAgentKey]?.displayName || selectedAgentKey}</div>
+        </div>
+      )}
+
+      <div className="flex flex-1 gap-1 sm:gap-2 px-1 py-1 sm:px-2 sm:py-2 overflow-hidden relative">
         <Transcript
           userText={userText}
           setUserText={setUserText}
