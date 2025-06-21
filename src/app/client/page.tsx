@@ -127,6 +127,20 @@ function ClientApp() {
   // Effect to handle scenario selection from URL (e.g., deep link) or set up for manual selection
   // Also handles displayMode from URL
   useEffect(() => {
+    // Log crucial browser APIs available within the iframe context
+    // This should run as early as possible in the client-side lifecycle of ClientApp
+    if (typeof window !== 'undefined') {
+      console.log("[ClientApp Init] typeof window.fetch:", typeof window.fetch);
+      console.log("[ClientApp Init] typeof window.WebSocket:", typeof window.WebSocket);
+      console.log("[ClientApp Init] typeof window.AudioContext:", typeof window.AudioContext);
+      console.log("[ClientApp Init] typeof window.webkitAudioContext:", typeof window.webkitAudioContext);
+      console.log("[ClientApp Init] typeof navigator.mediaDevices:", typeof navigator.mediaDevices);
+      if (navigator.mediaDevices) {
+        console.log("[ClientApp Init] typeof navigator.mediaDevices.getUserMedia:", typeof navigator.mediaDevices.getUserMedia);
+      }
+      console.log("[ClientApp Init] navigator.userAgent:", navigator.userAgent);
+    }
+
     const agentConfigFromUrl = searchParams.get("agentConfig");
     const modeFromUrl = searchParams.get("displayMode");
     const conversationIdFromUrl = searchParams.get("conversationId");

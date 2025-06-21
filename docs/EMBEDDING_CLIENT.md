@@ -91,7 +91,14 @@ Para que la funcionalidad completa del widget de chat (incluyendo audio PTT y co
     title="Asistente de Chat IA">
 </iframe>
 ```
-**Nota sobre `sandbox`**: Si utilizas el atributo `sandbox` en tu iframe por razones de seguridad, asegúrate de incluir los valores necesarios para que la aplicación funcione, como mínimo: `allow-scripts`, `allow-same-origin` (si es aplicable y deseado), `allow-forms`, `allow-popups` (para el botón de maximizar que abre nueva pestaña), `allow-modals`. Un `sandbox` demasiado restrictivo puede romper la funcionalidad del SDK.
+**Nota sobre `sandbox`**: Si utilizas el atributo `sandbox` en tu iframe por razones de seguridad, asegúrate de incluir los valores necesarios para que la aplicación funcione, como mínimo: `allow-scripts`, `allow-same-origin` (si es aplicable y deseado), `allow-forms`, `allow-popups` (para el botón de maximizar que abre nueva pestaña), `allow-modals`. Un `sandbox` demasiado restrictivo puede romper la funcionalidad del SDK de OpenAI y otras APIs del navegador, llevando a errores como `Cannot read properties of undefined (reading 'bind')` si el SDK no puede inicializar correctamente sus shims o acceder a APIs globales esperadas. Para depuración, considera temporalmente eliminar el atributo `sandbox` o usar una política muy permisiva para ver si el error desaparece, y luego restríngelo progresivamente.
+
+**Problemas Comunes de SDK en Iframes**: Errores como `Cannot read properties of undefined (reading 'bind')` que se originan en los "shims" del SDK de OpenAI suelen indicar que el SDK no puede detectar o usar correctamente las APIs del navegador necesarias (WebSocket, Fetch, AudioContext, etc.) dentro del entorno del iframe. Esto es a menudo debido a:
+1.  Políticas de permisos (`allow` atributo) insuficientes.
+2.  Un atributo `sandbox` demasiado restrictivo.
+3.  Políticas de Seguridad de Contenido (CSP) tanto de la página contenedora como de la página del widget.
+4.  Que la página del widget no se sirva sobre HTTPS (muchas APIs sensibles lo requieren).
+Asegurar una configuración permisiva para estos puntos es crucial.
 
 ## 6. Funcionalidad "Maximizar" del Widget
 
