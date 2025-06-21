@@ -25,10 +25,11 @@ import { customerServiceRetailScenario, customerServiceRetailCompanyName } from 
 // import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
 
 // Client-specific map for scenarios. Only include scenarios a client can initiate.
-const clientSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string }> = {
-  customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName },
+// Added displayName for the dropdown
+const clientSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }> = {
+  customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName, displayName: "Servicio al Cliente (Retail)" },
   // Example: If simpleHandoff is a client-selectable scenario:
-  // simpleHandoff: { scenario: simpleHandoffScenario, companyName: "YourSimpleHandoffService" }, // Assuming a company name for simpleHandoff
+  // simpleHandoff: { scenario: simpleHandoffScenario, companyName: "YourSimpleHandoffService", displayName: "Soporte Simple" },
 };
 
 // Determine a safe default agent key for the client page.
@@ -47,7 +48,12 @@ function ClientApp() {
   const { logClientEvent, logServerEvent } = useEvent();
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
-  const [selectedAgentKey, setSelectedAgentKey] = useState<string>(clientDefaultAgentSetKey);
+  // State for scenario selection step
+  const [scenarioSelectionCompleted, setScenarioSelectionCompleted] = useState<boolean>(false);
+  const [selectedScenarioKeyForUI, setSelectedScenarioKeyForUI] = useState<string>(clientDefaultAgentSetKey);
+
+
+  const [selectedAgentKey, setSelectedAgentKey] = useState<string>(""); // Will be set after scenario selection
   // Agent name within the selected scenario (usually the first agent)
   const [currentAgentName, setCurrentAgentName] = useState<string>("");
 
@@ -114,41 +120,43 @@ function ClientApp() {
 
   useHandleSessionHistory();
 
+  // Effect to handle scenario selection from URL (e.g., deep link) or set up for manual selection
   useEffect(() => {
     const agentConfigFromUrl = searchParams.get("agentConfig");
-    let keyToUse = clientDefaultAgentSetKey;
-
     if (agentConfigFromUrl && clientSdkScenarioMap[agentConfigFromUrl]) {
-      keyToUse = agentConfigFromUrl;
+      // If a valid scenario is in URL, use it and proceed to chat
+      setSelectedAgentKey(agentConfigFromUrl);
+      if (clientSdkScenarioMap[agentConfigFromUrl]?.scenario[0]?.name) {
+        setCurrentAgentName(clientSdkScenarioMap[agentConfigFromUrl].scenario[0].name);
+      }
+      setScenarioSelectionCompleted(true);
     } else if (agentConfigFromUrl) {
-      console.warn(`Client: Agent config "${agentConfigFromUrl}" from URL is not recognized or allowed. Using default.`);
-      // Optionally add a transcript message about using default
+      console.warn(`Client: Agent config "${agentConfigFromUrl}" from URL is not recognized or allowed. Defaulting to selection.`);
+      // Invalid URL config, user will be shown selection page with default selected in dropdown
+      setSelectedScenarioKeyForUI(clientDefaultAgentSetKey); // Ensure dropdown shows a valid default
+      setScenarioSelectionCompleted(false);
+    } else {
+      // No scenario in URL, user needs to select
+      setScenarioSelectionCompleted(false);
     }
-    setSelectedAgentKey(keyToUse);
-    // Set the initial agent name from the selected scenario
-    if (clientSdkScenarioMap[keyToUse]?.scenario[0]?.name) {
-        setCurrentAgentName(clientSdkScenarioMap[keyToUse].scenario[0].name);
-    }
-
   }, [searchParams]);
 
+
+  // Auto-connect after scenario selection is completed and valid agent key/name are set
   useEffect(() => {
-    // Auto-connect if agent is set, disconnected, and it wasn't an intentional disconnect by the user
-    if (selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED" && !userIntentionalDisconnect) {
-      // Check if essential config is present before attempting to connect
+    if (scenarioSelectionCompleted && selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED" && !userIntentionalDisconnect) {
       const scenarioInfo = clientSdkScenarioMap[selectedAgentKey];
-      if(scenarioInfo && scenarioInfo.scenario.find(a => a.name === currentAgentName)) {
-          connectToRealtime();
+      if (scenarioInfo && scenarioInfo.scenario.find(a => a.name === currentAgentName)) {
+        connectToRealtime();
       } else {
-          console.warn("Client: Auto-connect skipped. Agent config or name invalid/missing for selectedAgentKey:", selectedAgentKey, "currentAgentName:", currentAgentName);
-          // Optionally add a transcript message if this state is reached and auto-connection is expected by user.
-          // addTranscriptMessage(uuidv4().slice(0,32), "system", "Auto-connection skipped: Agent configuration missing or invalid.", false);
+        console.warn("Client: Auto-connect skipped post-selection. Agent config or name invalid/missing:", selectedAgentKey, currentAgentName);
+        addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: No se pudo iniciar la conexión. Configuración de agente inválida.", true);
       }
     }
-  }, [selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect]); // Added userIntentionalDisconnect to dependencies
+  }, [scenarioSelectionCompleted, selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect]);
 
    useEffect(() => {
-    if (sessionStatus === "CONNECTED" && clientSdkScenarioMap[selectedAgentKey] && currentAgentName) {
+    if (sessionStatus === "CONNECTED" && selectedAgentKey && clientSdkScenarioMap[selectedAgentKey] && currentAgentName) {
       const currentAgentConfig = clientSdkScenarioMap[selectedAgentKey].scenario.find(a => a.name === currentAgentName);
       if (handoffTriggeredRef.current) {
          addTranscriptBreadcrumb(`Agent: ${currentAgentName}`, currentAgentConfig);
@@ -164,6 +172,36 @@ function ClientApp() {
       updateSession(); // Update session based on PTT state etc.
     }
   }, [isPTTActive]);
+
+  const handleScenarioSelection = (selectedKey: string) => {
+    if (clientSdkScenarioMap[selectedKey]) {
+      setSelectedScenarioKeyForUI(selectedKey); // For UI consistency if needed before commit
+    }
+  };
+
+  const handleProceedToChat = () => {
+    if (clientSdkScenarioMap[selectedScenarioKeyForUI]) {
+      setSelectedAgentKey(selectedScenarioKeyForUI);
+      const scenario = clientSdkScenarioMap[selectedScenarioKeyForUI].scenario;
+      if (scenario[0]?.name) {
+        setCurrentAgentName(scenario[0].name);
+      } else {
+        console.error("Client: Selected scenario has no agents defined.");
+        addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: El escenario seleccionado no tiene agentes configurados.", true);
+        return; // Do not proceed
+      }
+      setScenarioSelectionCompleted(true);
+      // Update URL with selected scenario
+      const url = new URL(window.location.toString());
+      url.searchParams.set("agentConfig", selectedScenarioKeyForUI);
+      window.history.pushState({}, '', url);
+
+    } else {
+        console.error("Client: Invalid scenario key on proceed:", selectedScenarioKeyForUI);
+        addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: Selección de escenario inválida.", true);
+    }
+  };
+
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
     logClientEvent({ url: "/session" }, "fetch_session_token_request", currentConversationId || undefined);
@@ -384,10 +422,48 @@ function ClientApp() {
     return () => stopRecording();
   }, [sessionStatus]);
 
+  if (!scenarioSelectionCompleted) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gray-100 p-6">
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-6 text-gray-700 text-center">Seleccione un Escenario</h1>
+          <div className="mb-6">
+            <label htmlFor="scenario-select" className="block text-sm font-medium text-gray-700 mb-1">
+              Escenario de Conversación:
+            </label>
+            <select
+              id="scenario-select"
+              value={selectedScenarioKeyForUI}
+              onChange={(e) => handleScenarioSelection(e.target.value)}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm"
+            >
+              {Object.entries(clientSdkScenarioMap).map(([key, { displayName }]) => (
+                <option key={key} value={key}>
+                  {displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleProceedToChat}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md text-base transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Continuar al Chat
+          </button>
+        </div>
+         <div className="mt-8 text-center">
+            <p className="text-xs text-gray-500">
+              También puede especificar un escenario mediante el parámetro URL `?agentConfig=yourScenarioKey`
+            </p>
+          </div>
+      </div>
+    );
+  }
+
   return (
     <div className="text-base flex flex-col h-screen bg-gray-50 text-gray-800 relative">
       <div className="p-4 text-xl font-semibold flex justify-start items-center border-b bg-white shadow-sm">
-        <div>Client Support Portal</div>
+        <div>Client Support Portal: {clientSdkScenarioMap[selectedAgentKey]?.displayName || selectedAgentKey}</div>
         {/* Add logo here if available */}
       </div>
 
