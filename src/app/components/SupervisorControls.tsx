@@ -1,11 +1,9 @@
 "use client";
 import React from "react";
-import Image from "next/image";
 import { SessionStatus } from "@/app/types";
 import type { RealtimeAgent } from '@openai/agents/realtime';
+import Link from 'next/link'; // Import Link
 
-// Assuming supervisorSdkScenarioMap is defined in a shared config or passed as a prop.
-// For this example, let's assume it's passed as a prop.
 interface SupervisorSdkScenario {
   scenario: RealtimeAgent[];
   companyName: string;
@@ -22,31 +20,15 @@ interface SupervisorControlsProps {
   currentAgentConfigSet: RealtimeAgent[] | null;
   isAudioPlaybackEnabled: boolean;
   setIsAudioPlaybackEnabled: (enabled: boolean) => void;
-  supervisorSdkScenarioMap: Record<string, SupervisorSdkScenario>; // Note: This will be editableScenarios from parent
-  editableMetaprompt: string;
-  setEditableMetaprompt: (text: string) => void;
-  onResetMetaprompt: () => void;
-  editableAgentSpecificTexts: EditableAgentTexts | null;
-  setEditableAgentSpecificTexts: (texts: EditableAgentTexts | null) => void;
-  onResetAgentSpecificTexts: () => void;
+  // This will now receive the possibly modified scenarios from SupervisorApp (which might load them from localStorage)
+  supervisorSdkScenarioMap: Record<string, SupervisorSdkScenario>;
   allConversationIds: string[];
   selectedConversationId: string | null;
   onSelectConversationId: (id: string | null) => void;
-  agentTools: SimpleToolDefinition[] | null;
-  // Props for scenario editing
-  isEditingScenarioMode: boolean;
-  setIsEditingScenarioMode: (editing: boolean) => void;
-  editableScenarios: Record<string, SupervisorSdkScenario>;
-  setEditableScenarios: React.Dispatch<React.SetStateAction<Record<string, SupervisorSdkScenario>>>;
-  editingScenario: { key: string; data: SupervisorSdkScenario } | null;
-  setEditingScenario: (scenario: { key: string; data: SupervisorSdkScenario } | null) => void;
+  agentTools: SimpleToolDefinition[] | null; // For display only
 }
 
-interface EditableAgentTexts {
-  greeting?: string;
-  instructions?: string;
-}
-
+// Define SimpleToolDefinition locally if not imported from a shared types file
 interface SimpleToolDefinition {
   name: string;
   description?: string;
@@ -63,202 +45,12 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
   currentAgentConfigSet,
   isAudioPlaybackEnabled,
   setIsAudioPlaybackEnabled,
-  // supervisorSdkScenarioMap, // This prop is effectively replaced by editableScenarios for display logic
-  editableMetaprompt,
-  setEditableMetaprompt,
-  onResetMetaprompt,
-  editableAgentSpecificTexts,
-  setEditableAgentSpecificTexts,
-  onResetAgentSpecificTexts,
+  supervisorSdkScenarioMap, // Use this for scenario dropdown
   allConversationIds,
   selectedConversationId,
   onSelectConversationId,
   agentTools,
-  // Scenario editing props
-  isEditingScenarioMode,
-  setIsEditingScenarioMode,
-  editableScenarios, // Use this for displaying list of scenarios
-  setEditableScenarios,
-  editingScenario,
-  setEditingScenario,
 }) => {
-
-  // Handler for initiating scenario editing
-  const handleEditScenario = (scenarioKey: string) => {
-    if (editableScenarios[scenarioKey]) {
-      // Deep copy for editing to avoid modifying state directly
-      setEditingScenario({ key: scenarioKey, data: JSON.parse(JSON.stringify(editableScenarios[scenarioKey])) });
-      setIsEditingScenarioMode(true);
-    }
-  };
-
-  // Handler for creating a new scenario
-  const handleCreateNewScenario = () => {
-    const newKey = `newScenario_${Date.now()}`; // Simple unique key
-    const newScenarioData: SupervisorSdkScenario = {
-      displayName: "New Scenario",
-      companyName: "Default Company",
-      scenario: [{ // Default agent structure
-        name: "defaultAgent",
-        instructions: "Default instructions",
-        model: "gpt-4o-mini-realtime-preview",
-        voice: "alloy",
-        tools: [],
-      }],
-    };
-    setEditingScenario({ key: newKey, data: newScenarioData });
-    setIsEditingScenarioMode(true);
-  };
-
-  // Handler for saving edited/created scenario
-  const handleSaveScenario = () => {
-    if (editingScenario) {
-      setEditableScenarios(prev => ({
-        ...prev,
-        [editingScenario.key]: editingScenario.data,
-      }));
-      setIsEditingScenarioMode(false);
-      setEditingScenario(null);
-      // Consider if the main page needs to be informed to update its currentAgentSetKey if it was just edited/created
-      // This might require an additional callback or careful state management in the parent.
-    }
-  };
-
-  // Handler for deleting a scenario
-  const handleDeleteScenario = (scenarioKey: string) => {
-    if (window.confirm(`Are you sure you want to delete scenario "${editableScenarios[scenarioKey]?.displayName || scenarioKey}"? This action cannot be undone.`)) {
-      setEditableScenarios(prev => {
-        const newScenarios = { ...prev };
-        delete newScenarios[scenarioKey];
-        return newScenarios;
-      });
-      // If the deleted scenario was the active one, the parent component (SupervisorApp)
-      // will need to handle resetting currentAgentSetKey, possibly to the first available scenario or a default.
-      // This is typically handled by useEffect in the parent watching changes to editableScenarios.
-      if (currentAgentSetKey === scenarioKey) {
-        // Inform parent or rely on parent's useEffect to pick a new default
-        // For now, just deleting. Parent should adapt.
-      }
-    }
-  };
-
-  // Component for editing a single agent within a scenario
-  const AgentEditor: React.FC<{ agent: RealtimeAgent, onChange: (updatedAgent: RealtimeAgent) => void, onDelete: () => void }> = ({ agent, onChange, onDelete }) => {
-    const [localAgent, setLocalAgent] = React.useState<RealtimeAgent>(agent);
-
-    React.useEffect(() => {
-      setLocalAgent(agent);
-    }, [agent]); // Re-synchronize when the agent prop changes
-
-    // Update local state and propagate changes when an input field changes
-    const handleChange = (field: keyof RealtimeAgent, value: any) => {
-      const updatedAgent = { ...localAgent, [field]: value };
-      setLocalAgent(updatedAgent);
-      onChange(updatedAgent); // Propagate change up to the editingScenario state
-    };
-
-    const handleToolsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      try {
-        const toolsArray = JSON.parse(e.target.value);
-        if (Array.isArray(toolsArray)) {
-          handleChange('tools', toolsArray);
-        } else {
-          // Optionally provide user feedback for invalid JSON structure
-          console.warn("Tools input is not a valid JSON array.");
-        }
-      } catch (error) {
-        // Optionally provide user feedback for invalid JSON
-        console.warn("Error parsing tools JSON:", error);
-      }
-    };
-
-    return (
-      <div className="p-3 bg-gray-500 rounded-md mt-2 space-y-2 border border-gray-400 shadow-sm">
-        <input type="text" value={localAgent.name} onChange={e => handleChange('name', e.target.value)} placeholder="Agent Name" className="w-full p-1.5 rounded bg-gray-400 text-white placeholder-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500" />
-        <textarea value={localAgent.instructions || ""} onChange={e => handleChange('instructions', e.target.value)} placeholder="Instructions" rows={3} className="w-full p-1.5 rounded bg-gray-400 text-white placeholder-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500" />
-        <input type="text" value={localAgent.model || ""} onChange={e => handleChange('model', e.target.value)} placeholder="Model (e.g., gpt-4, gpt-3.5-turbo)" className="w-full p-1.5 rounded bg-gray-400 text-white placeholder-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500" />
-        {/* Common voices: alloy, echo, fable, onyx, nova, shimmer */}
-        <input type="text" value={localAgent.voice || ""} onChange={e => handleChange('voice', e.target.value)} placeholder="Voice (e.g., alloy, echo)" className="w-full p-1.5 rounded bg-gray-400 text-white placeholder-gray-300 text-sm focus:ring-blue-500 focus:border-blue-500" />
-        <div>
-          <label className="block text-xs text-gray-300 mb-0.5">Tools (JSON array of FunctionTool):</label>
-          <textarea
-            value={JSON.stringify(localAgent.tools || [], null, 2)}
-            onChange={handleToolsChange}
-            placeholder='[{"type": "function", "function": {"name": "func_name", "description": "...", "parameters": {"type": "object", "properties": {}}}}]'
-            rows={5}
-            className="w-full p-1.5 rounded bg-gray-400 text-white placeholder-gray-300 font-mono text-xs focus:ring-blue-500 focus:border-blue-500 custom-scrollbar-small"
-          />
-        </div>
-        <button onClick={onDelete} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">Delete Agent</button>
-      </div>
-    );
-  };
-
-  // Scenario Editing UI
-  if (isEditingScenarioMode && editingScenario) {
-    return (
-      <div className="bg-gray-700 text-white p-4 space-y-4 h-full overflow-y-auto custom-scrollbar">
-        <h2 className="text-xl font-semibold sticky top-0 bg-gray-700 py-3 z-10 border-b border-gray-600 mb-4">
-          {editingScenario.key.startsWith("newScenario") ? "Create New Scenario" : `Edit Scenario: ${editingScenario.data.displayName}`}
-        </h2>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Display Name:</label>
-            <input
-              type="text"
-              value={editingScenario.data.displayName}
-              onChange={(e) => setEditingScenario({ ...editingScenario, data: { ...editingScenario.data, displayName: e.target.value } })}
-              className="w-full p-2 rounded bg-gray-600 border border-gray-500 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">Company Name (for Guardrails):</label>
-            <input
-              type="text"
-              value={editingScenario.data.companyName}
-              onChange={(e) => setEditingScenario({ ...editingScenario, data: { ...editingScenario.data, companyName: e.target.value } })}
-              className="w-full p-2 rounded bg-gray-600 border border-gray-500 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
-
-        <h3 className="text-lg font-semibold text-gray-200 mt-4 pt-2 border-t border-gray-600">Agents:</h3>
-        <div className="space-y-4">
-          {editingScenario.data.scenario.map((agent, index) => (
-            <AgentEditor
-              key={index} // Using index as key is okay if list is not reordered; consider uuid if reordering is added.
-              agent={agent}
-              onChange={(updatedAgent) => {
-                const updatedAgents = [...editingScenario.data.scenario];
-                updatedAgents[index] = updatedAgent;
-                setEditingScenario({ ...editingScenario, data: { ...editingScenario.data, scenario: updatedAgents } });
-              }}
-              onDelete={() => {
-                const updatedAgents = editingScenario.data.scenario.filter((_, i) => i !== index);
-                setEditingScenario({ ...editingScenario, data: { ...editingScenario.data, scenario: updatedAgents } });
-              }}
-            />
-          ))}
-        </div>
-        <button
-          onClick={() => {
-            const newAgent: RealtimeAgent = { name: `agent${editingScenario.data.scenario.length + 1}`, instructions: "", model: "gpt-4o-mini-realtime-preview", voice: "alloy", tools: [] };
-            setEditingScenario({ ...editingScenario, data: { ...editingScenario.data, scenario: [...editingScenario.data.scenario, newAgent] } });
-          }}
-          className="bg-green-500 hover:bg-green-600 text-white font-semibold px-4 py-2 rounded text-sm mt-3 transition-colors"
-        >
-          Add Agent
-        </button>
-
-        <div className="flex gap-x-3 mt-6 pt-4 sticky bottom-0 bg-gray-700 py-3 z-10 border-t border-gray-600">
-          <button onClick={handleSaveScenario} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md transition-colors">Save Scenario</button>
-          <button onClick={() => { setIsEditingScenarioMode(false); setEditingScenario(null); }} className="bg-gray-400 hover:bg-gray-500 text-gray-800 font-semibold px-4 py-2 rounded-md transition-colors">Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  // Main Controls UI (to be filled in next)
   return (
     <div className="bg-gray-700 text-white p-3 flex flex-col gap-3 h-full overflow-y-auto custom-scrollbar">
       {/* Connection and Scenario Selection Controls */}
@@ -281,11 +73,11 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
                 id="scenario-select"
                 value={currentAgentSetKey}
                 onChange={handleAgentScenarioChange}
-                disabled={Object.keys(editableScenarios).length === 0}
+                disabled={Object.keys(supervisorSdkScenarioMap).length === 0} // Use supervisorSdkScenarioMap here
                 className="appearance-none border border-gray-500 rounded-md text-sm px-3 py-1.5 pr-7 cursor-pointer font-normal bg-gray-600 text-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-60"
               >
-                {Object.keys(editableScenarios).length === 0 && <option value="">No Scenarios</option>}
-                {Object.entries(editableScenarios).map(([key, { displayName }]) => (
+                {Object.keys(supervisorSdkScenarioMap).length === 0 && <option value="">No Scenarios</option>}
+                {Object.entries(supervisorSdkScenarioMap).map(([key, { displayName }]) => (
                   <option key={key} value={key}>
                     {displayName}
                   </option>
@@ -334,80 +126,23 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
         Nota: El botón "Connect" inicia una sesión de monitoreo/prueba con la configuración de IA seleccionada. No es para conversar como cliente.
       </p>
 
-      {/* Metaprompt Editing Section */}
-      <div className="w-full p-3 bg-gray-600 rounded-md shadow">
-        <h3 className="text-md font-semibold mb-1.5 text-white">Global Metaprompt</h3>
-        <textarea
-          value={editableMetaprompt}
-          onChange={(e) => setEditableMetaprompt(e.target.value)}
-          rows={5}
-          className="w-full p-2 rounded-md text-sm text-gray-900 bg-gray-100 border border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 custom-scrollbar-small"
-          placeholder="Metaprompt content..."
-        />
-        <div className="mt-2 flex justify-end">
-          <button
-            onClick={onResetMetaprompt}
-            className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-1 px-3 rounded-md text-xs"
-          >
-            Reset Metaprompt
-          </button>
-        </div>
+      <div className="my-2 p-3 bg-gray-600 rounded-md shadow">
+        <Link href="/supervisor/settings" className="text-blue-400 hover:text-blue-300 text-sm font-medium">
+          Ir a Configuración (Editar Escenarios y Metaprompt Global) &rarr;
+        </Link>
       </div>
-
-      {/* Agent-Specific Text Editing Section */}
-      {editableAgentSpecificTexts && (currentAgentConfigSet && currentAgentConfigSet.find(a => a.name === selectedAgentName)) && (
-        <div className="w-full p-3 bg-gray-600 rounded-md shadow border border-gray-500">
-          <h4 className="text-md font-semibold mb-1.5 text-white">Texts for Agent: <span className="font-bold text-cyan-300">{selectedAgentName}</span></h4>
-          {typeof editableAgentSpecificTexts.greeting === 'string' && (
-            <div className="mb-2">
-              <label htmlFor="agent-greeting-editor" className="block text-xs font-medium text-gray-300 mb-0.5">Greeting:</label>
-              <textarea
-                id="agent-greeting-editor"
-                value={editableAgentSpecificTexts.greeting}
-                onChange={(e) => setEditableAgentSpecificTexts({ ...editableAgentSpecificTexts, greeting: e.target.value })}
-                rows={2}
-                className="w-full p-1.5 rounded-md text-sm text-gray-900 bg-gray-100 border border-gray-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 custom-scrollbar-small"
-                placeholder="Agent greeting..."
-              />
-            </div>
-          )}
-          {typeof editableAgentSpecificTexts.instructions === 'string' && (
-            <div className="mb-2">
-              <label htmlFor="agent-instructions-editor" className="block text-xs font-medium text-gray-300 mb-0.5">Instructions:</label>
-              <textarea
-                id="agent-instructions-editor"
-                value={editableAgentSpecificTexts.instructions}
-                onChange={(e) => setEditableAgentSpecificTexts({ ...editableAgentSpecificTexts, instructions: e.target.value })}
-                rows={3}
-                className="w-full p-1.5 rounded-md text-sm text-gray-900 bg-gray-100 border border-gray-400 focus:outline-none focus:ring-1 focus:ring-cyan-400 custom-scrollbar-small"
-                placeholder="Agent instructions..."
-              />
-            </div>
-          )}
-          {(typeof editableAgentSpecificTexts.greeting !== 'undefined' || typeof editableAgentSpecificTexts.instructions !== 'undefined') &&
-            <div className="mt-2 flex justify-end">
-              <button
-                onClick={onResetAgentSpecificTexts}
-                className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-1 px-3 rounded-md text-xs"
-              >
-                Reset Agent Texts
-              </button>
-            </div>
-          }
-        </div>
-      )}
 
       {/* Conversation ID Filter Section */}
       {allConversationIds.length > 0 && (
         <div className="w-full p-3 bg-gray-600 rounded-md shadow border border-gray-500">
-          <label htmlFor="convo-filter-select" className="block text-sm font-medium text-gray-300 mb-1">Filter Logs by Conversation ID:</label>
+          <label htmlFor="convo-filter-select" className="block text-sm font-medium text-gray-300 mb-1">Filtrar Logs por ID de Conversación:</label>
           <select
             id="convo-filter-select"
             value={selectedConversationId || ""}
             onChange={(e) => onSelectConversationId(e.target.value === "" ? null : e.target.value)}
             className="appearance-none w-full md:w-auto border border-gray-500 rounded-md text-sm px-3 py-1.5 pr-7 cursor-pointer font-normal bg-gray-600 text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="">All Conversations</option>
+            <option value="">Todas las Conversaciones</option>
             {allConversationIds.map(id => (
               <option key={id} value={id}>{id.substring(0, 8)}...</option>
             ))}
@@ -415,32 +150,10 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
         </div>
       )}
 
-      {/* Scenario Management Section */}
-      <div className="w-full p-3 bg-gray-600 rounded-md shadow">
-          <div className="flex justify-between items-center mb-2">
-              <h3 className="text-md font-semibold text-white">Manage Scenarios</h3>
-              <button onClick={handleCreateNewScenario} className="bg-green-500 hover:bg-green-600 text-white font-semibold py-1 px-3 rounded-md text-sm transition-colors">
-                  Create New
-              </button>
-          </div>
-          <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 custom-scrollbar-small">
-              {Object.entries(editableScenarios).map(([key, scenario]) => (
-                  <div key={key} className="flex justify-between items-center p-1.5 bg-gray-500 rounded-md">
-                      <span className="text-xs truncate" title={scenario.displayName}>{scenario.displayName} <span className="text-gray-300">({key.length > 10 ? key.substring(0,10) + "..." : key})</span></span>
-                      <div className="flex gap-1.5">
-                          <button onClick={() => handleEditScenario(key)} className="bg-blue-500 hover:bg-blue-600 text-white px-1.5 py-0.5 rounded-sm text-xs">Edit</button>
-                          <button onClick={() => handleDeleteScenario(key)} className="bg-red-500 hover:bg-red-600 text-white px-1.5 py-0.5 rounded-sm text-xs">Delete</button>
-                      </div>
-                  </div>
-              ))}
-              {Object.keys(editableScenarios).length === 0 && <p className="text-xs text-gray-400 italic">No scenarios defined. Click "Create New" to add one.</p>}
-          </div>
-      </div>
-
-      {/* Agent Tools Display Section */}
+      {/* Agent Tools Display Section (Read-only) */}
       {agentTools && agentTools.length > 0 && (currentAgentConfigSet && currentAgentConfigSet.find(a => a.name === selectedAgentName)) && (
         <div className="w-full p-3 bg-gray-550 rounded-md border border-gray-500">
-          <h4 className="text-md font-semibold mb-1.5 text-white">Tools for Agent: <span className="font-bold text-purple-300">{selectedAgentName}</span></h4>
+          <h4 className="text-md font-semibold mb-1.5 text-white">Herramientas para Agente: <span className="font-bold text-purple-300">{selectedAgentName}</span></h4>
           <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
             {agentTools.map((tool, index) => (
               <div key={index} className="p-2 bg-gray-600 rounded-md shadow">
@@ -448,7 +161,7 @@ const SupervisorControls: React.FC<SupervisorControlsProps> = ({
                 {tool.description && <p className="text-xs text-gray-200 mt-0.5">{tool.description}</p>}
                 {tool.parameters && (
                   <div className="mt-1">
-                    <p className="text-xs font-medium text-gray-300 mb-0.5">Parameters:</p>
+                    <p className="text-xs font-medium text-gray-300 mb-0.5">Parámetros:</p>
                     <pre className="text-xs text-gray-100 bg-gray-700 p-1.5 rounded-sm whitespace-pre-wrap break-all custom-scrollbar-small">
                       {JSON.stringify(tool.parameters, null, 2)}
                     </pre>

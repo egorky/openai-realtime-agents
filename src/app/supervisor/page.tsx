@@ -65,10 +65,37 @@ function SupervisorApp() {
   const [originalAgentSpecificTexts, setOriginalAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
   const [currentAgentTools, setCurrentAgentTools] = useState<SimpleToolDefinition[] | null>(null);
 
-  // State for managing scenarios in supervisor UI (volatile, not persisted)
-  const [editableScenarios, setEditableScenarios] = useState<Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }>>(() => JSON.parse(JSON.stringify(supervisorSdkScenarioMap))); // Deep copy for editing
-  const [editingScenario, setEditingScenario] = useState<{ key: string, data: { scenario: RealtimeAgent[], companyName: string, displayName: string } } | null>(null);
-  const [isEditingMode, setIsEditingMode] = useState<boolean>(false); // To toggle scenario editing UI
+  // State for managing scenarios in supervisor UI
+  // Initialize from localStorage or fallback to supervisorSdkScenarioMap
+  const [editableScenarios, setEditableScenarios] = useState<Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }>>(() => {
+    if (typeof window !== 'undefined') {
+      const storedScenarios = localStorage.getItem("supervisorCustomScenarios");
+      if (storedScenarios) {
+        try {
+          return JSON.parse(storedScenarios);
+        } catch (e) {
+          console.error("Failed to parse stored scenarios from localStorage on init", e);
+        }
+      }
+    }
+    return JSON.parse(JSON.stringify(supervisorSdkScenarioMap)); // Deep copy for initial state
+  });
+
+  // State for metaprompt - load from localStorage or use default
+  const [editableMetaprompt, setEditableMetaprompt] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const storedMetaprompt = localStorage.getItem("supervisorCustomMetaprompt");
+      if (storedMetaprompt) {
+        return storedMetaprompt;
+      }
+    }
+    return `Eres un asistente de IA de voz. Responde al usuario de forma conversacional y concisa. No incluyas ningún formato especial en tus respuestas. No incluyas nada que no deba ser leído por la conversión de texto a voz. No necesitas decir cosas como 'Claro', 'Por supuesto', o 'Entendido' a menos que sea una respuesta afirmativa a una pregunta directa. En su lugar, ve directo a la respuesta. Si no puedes ayudar con algo, dilo y explica por qué. Puedes usar las siguientes herramientas para ayudarte a responder al usuario. Para usar una herramienta, responde únicamente con un bloque de código JSON que especifique el nombre de la herramienta y las entradas que necesita. El bloque de código JSON debe ser el único contenido en tu respuesta. No lo envuelves con \`\`\`json.
+
+<TOOL_DESCRIPTIONS>`;
+  });
+  // originalMetaprompt is not strictly needed here anymore if reset on settings page goes to constant
+  // const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(editableMetaprompt);
+
 
   const allConversationIds = useMemo(() => {
     const ids = new Set<string>();
@@ -135,15 +162,7 @@ function SupervisorApp() {
 
   useHandleSessionHistory(); // May or may not be relevant for supervisor, but harmless
 
-  // In SupervisorApp, useEffect for loading initial metaprompt
-  useEffect(() => {
-    // Simulate loading the translated metaprompt content
-    const initialMetapromptContent = `Eres un asistente de IA de voz. Responde al usuario de forma conversacional y concisa. No incluyas ningún formato especial en tus respuestas. No incluyas nada que no deba ser leído por la conversión de texto a voz. No necesitas decir cosas como 'Claro', 'Por supuesto', o 'Entendido' a menos que sea una respuesta afirmativa a una pregunta directa. En su lugar, ve directo a la respuesta. Si no puedes ayudar con algo, dilo y explica por qué. Puedes usar las siguientes herramientas para ayudarte a responder al usuario. Para usar una herramienta, responde únicamente con un bloque de código JSON que especifique el nombre de la herramienta y las entradas que necesita. El bloque de código JSON debe ser el único contenido en tu respuesta. No lo envuelves con \`\`\`json.
-
-<TOOL_DESCRIPTIONS>`; // Note: <TOOL_DESCRIPTIONS> is a placeholder used by the SDK
-    setEditableMetaprompt(initialMetapromptContent);
-    setOriginalMetaprompt(initialMetapromptContent);
-  }, []);
+  // In SupervisorApp, useEffect for loading initial metaprompt is replaced by useState initializer above
 
   useEffect(() => {
     // Use editableScenarios for dynamic updates
@@ -270,16 +289,23 @@ function SupervisorApp() {
       const EPHEMERAL_KEY = await fetchEphemeralKey();
       if (!EPHEMERAL_KEY) return;
 
-      let processedAgents = scenarioDetails.scenario
-        .filter(agent => agent && typeof agent === 'object') // Ensure agent is a valid object
-        .map(originalAgentConfig => {
-          // Ensure originalAgentConfig is not null and is an object, though filter should handle null/undefined
-          if (!originalAgentConfig) return null;
+      console.log("[Supervisor Connect] Original scenarioDetails.scenario:", JSON.stringify(scenarioDetails.scenario, null, 2));
 
-          let modifiedAgentConfig = { ...originalAgentConfig };
+      let processedAgents = scenarioDetails.scenario
+        .filter(agent => {
+          const isValid = agent && typeof agent === 'object';
+          if (!isValid) console.warn("[Supervisor Connect] Filtering out invalid agent object:", agent);
+          return isValid;
+        })
+        .map((originalAgentConfig, index) => {
+          console.log(`[Supervisor Connect] Processing originalAgentConfig[${index}]:`, JSON.stringify(originalAgentConfig, null, 2));
+          // Ensure originalAgentConfig is not null and is an object, though filter should handle null/undefined
+          // The filter above should ensure originalAgentConfig is an object here.
+
+          let modifiedAgentConfig = { ...originalAgentConfig } as RealtimeAgent; // Cast to RealtimeAgent
 
           // Apply agent-specific overrides for greeting and instructions
-          if (originalAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
+          if (modifiedAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
             if (typeof editableAgentSpecificTexts.greeting === 'string') {
               modifiedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
             }
@@ -290,23 +316,32 @@ function SupervisorApp() {
 
           // Ensure 'tools' is an array, default to empty array if not present or not an array
           if (!Array.isArray(modifiedAgentConfig.tools)) {
+            console.warn(`[Supervisor Connect] Agent "${modifiedAgentConfig.name}" tools is not an array, defaulting to []. Original tools:`, modifiedAgentConfig.tools);
             modifiedAgentConfig.tools = [];
+          } else {
+            // Further check if all elements in tools are valid FunctionTool objects
+            modifiedAgentConfig.tools = modifiedAgentConfig.tools.filter(tool =>
+              tool && typeof tool === 'object' && tool.type === 'function' && typeof tool.function === 'object' && tool.function.name
+            );
           }
 
-          // Ensure other potentially problematic properties are well-defined if necessary
-          // For example, ensure 'name' is a string, 'model' and 'voice' are strings if defined.
-          modifiedAgentConfig.name = String(modifiedAgentConfig.name || 'UnnamedAgent');
+          modifiedAgentConfig.name = String(modifiedAgentConfig.name || `UnnamedAgent_${index}`);
           if (typeof modifiedAgentConfig.model !== 'string' && modifiedAgentConfig.model !== undefined) {
-             // console.warn("Agent model is not a string, attempting to stringify or default", modifiedAgentConfig.model);
-             modifiedAgentConfig.model = "gpt-4o-mini-realtime-preview"; // Default or handle appropriately
+             modifiedAgentConfig.model = "gpt-4o-mini-realtime-preview";
+          }
+          // Ensure voice is a string if present, or undefined
+          if (modifiedAgentConfig.voice && typeof modifiedAgentConfig.voice !== 'string') {
+            console.warn(`[Supervisor Connect] Agent "${modifiedAgentConfig.name}" voice is not a string, setting to undefined. Original voice:`, modifiedAgentConfig.voice);
+            modifiedAgentConfig.voice = undefined;
           }
 
 
+          console.log(`[Supervisor Connect] Modified modifiedAgentConfig[${index}]:`, JSON.stringify(modifiedAgentConfig, null, 2));
           return modifiedAgentConfig;
-        }).filter(agent => agent !== null) as RealtimeAgent[]; // Filter out any nulls from map and cast
+        }) as RealtimeAgent[]; // Cast after map, filter for nulls is removed as map should always return RealtimeAgent or be filtered by structure
 
       if (processedAgents.length === 0) {
-        console.error(`Supervisor: No valid agents to connect after processing for scenario ${currentAgentSetKey}.`);
+        console.error(`Supervisor: No valid agents to connect after processing for scenario ${currentAgentSetKey}. Original count: ${scenarioDetails.scenario.length}`);
         setSessionStatus("DISCONNECTED");
         logClientEvent({type: "system.error", message: `No valid agents after processing for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
         return;
@@ -328,6 +363,13 @@ function SupervisorApp() {
       const agentsToConnect = processedAgents;
       const guardrail = createModerationGuardrail(scenarioDetails.companyName);
 
+      console.log("[Supervisor Connect] Attempting to connect with options:");
+      console.log("[Supervisor Connect] currentAgentSetKey:", currentAgentSetKey);
+      console.log("[Supervisor Connect] currentAgentName:", currentAgentName);
+      console.log("[Supervisor Connect] agentsToConnect:", JSON.stringify(agentsToConnect, null, 2));
+      console.log("[Supervisor Connect] defaultPrompt:", editableMetaprompt ? editableMetaprompt.substring(0, 100) + "..." : "undefined/empty");
+
+
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
         initialAgents: agentsToConnect,
@@ -337,8 +379,11 @@ function SupervisorApp() {
         defaultPrompt: editableMetaprompt,
       });
        logClientEvent({type: "system.log", message: `Supervisor connected with agent: ${currentAgentName}`}, "supervisor_connect_success", newConvId);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Supervisor: Error connecting via SDK:", err);
+      console.error("Supervisor: Error name:", err.name);
+      console.error("Supervisor: Error message:", err.message);
+      console.error("Supervisor: Error stack:", err.stack);
       setSessionStatus("DISCONNECTED");
       logClientEvent({type: "system.error", message: `Supervisor connection error: ${err}`}, "supervisor_connect_fail", newConvId);
     }
@@ -480,27 +525,14 @@ function SupervisorApp() {
             selectedAgentName={currentAgentName}
             handleSelectedAgentNameChange={handleSelectedAgentNameChange}
             currentAgentConfigSet={currentAgentConfigSet}
-            // isEventsPaneExpanded and setIsEventsPaneExpanded are removed
+            // Props related to direct editing UI are removed
             isAudioPlaybackEnabled={isAudioPlaybackEnabled}
             setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
-            supervisorSdkScenarioMap={editableScenarios} // Pass editableScenarios
-            editableMetaprompt={editableMetaprompt}
-            setEditableMetaprompt={setEditableMetaprompt}
-            onResetMetaprompt={() => setEditableMetaprompt(originalMetaprompt)}
-            editableAgentSpecificTexts={editableAgentSpecificTexts}
-            setEditableAgentSpecificTexts={setEditableAgentSpecificTexts}
-            onResetAgentSpecificTexts={() => setEditableAgentSpecificTexts(originalAgentSpecificTexts)}
+            supervisorSdkScenarioMap={editableScenarios} // This is the list of scenarios (possibly from localStorage)
             allConversationIds={allConversationIds}
             selectedConversationId={selectedConvIdFilter}
             onSelectConversationId={setSelectedConvIdFilter}
-            agentTools={currentAgentTools} // Pass currentAgentTools
-            // Scenario editing props
-            isEditingScenarioMode={isEditingMode}
-            setIsEditingScenarioMode={setIsEditingMode}
-            editableScenarios={editableScenarios}
-            setEditableScenarios={setEditableScenarios}
-            editingScenario={editingScenario}
-            setEditingScenario={setEditingScenario}
+            agentTools={currentAgentTools}
           />
         </div>
       </div>
