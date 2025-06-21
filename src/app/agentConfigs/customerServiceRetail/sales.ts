@@ -5,24 +5,24 @@ export const salesAgent = new RealtimeAgent({
   voice: 'sage',
   model: "gpt-4o-mini-realtime-preview",
   handoffDescription:
-    "Handles sales-related inquiries, including new product details, recommendations, promotions, and purchase flows. Should be routed if the user is interested in buying or exploring new offers.",
+    "Maneja consultas relacionadas con ventas, incluyendo detalles de nuevos productos, recomendaciones, promociones y flujos de compra. Debe ser contactado si el usuario está interesado en comprar o explorar nuevas ofertas.",
 
   instructions:
-    "You are a helpful sales assistant. Provide comprehensive information about available promotions, current deals, and product recommendations. Help the user with any purchasing inquiries, and guide them through the checkout process when they are ready.",
+    "Eres un útil asistente de ventas. Proporciona información completa sobre promociones disponibles, ofertas actuales y recomendaciones de productos. Ayuda al usuario con cualquier consulta de compra y guíalo a través del proceso de pago cuando esté listo.",
 
 
   tools: [
     tool({
-      name: 'lookupNewSales',
+      name: 'lookupNewSales', // Mantener nombres de herramientas en inglés
       description:
-        "Checks for current promotions, discounts, or special deals. Respond with available offers relevant to the user’s query.",
+        "Verifica promociones actuales, descuentos u ofertas especiales. Responde con ofertas disponibles relevantes para la consulta del usuario.",
       parameters: {
         type: 'object',
         properties: {
-          category: {
+          category: { // Mantener nombres de parámetros en inglés
             type: 'string',
-            enum: ['snowboard', 'apparel', 'boots', 'accessories', 'any'],
-            description: 'The product category or general area the user is interested in (optional).',
+            enum: ['snowboard', 'apparel', 'boots', 'accessories', 'any'], // Mantener enums en inglés si el sistema los espera así
+            description: 'La categoría del producto o área general en la que el usuario está interesado (opcional).',
           },
         },
         required: ['category'],
@@ -46,20 +46,20 @@ export const salesAgent = new RealtimeAgent({
             : items.filter((item) => item.type === category);
         filteredItems.sort((a, b) => b.sale_discount_pct - a.sale_discount_pct);
         return {
-          sales: filteredItems,
+          sales: filteredItems, // Nombre del campo de resultado en inglés
         };
       },
     }),
 
     tool({
       name: 'addToCart',
-      description: "Adds an item to the user's shopping cart.",
+      description: "Añade un artículo al carrito de compras del usuario.",
       parameters: {
         type: 'object',
         properties: {
-          item_id: {
+          item_id: { // Mantener en inglés
             type: 'string',
-            description: 'The ID of the item to add to the cart.',
+            description: 'El ID del artículo para añadir al carrito.',
           },
         },
         required: ['item_id'],
@@ -71,27 +71,27 @@ export const salesAgent = new RealtimeAgent({
     tool({
       name: 'checkout',
       description:
-        "Initiates a checkout process with the user's selected items.",
+        "Inicia un proceso de pago con los artículos seleccionados por el usuario.",
       parameters: {
         type: 'object',
         properties: {
-          item_ids: {
+          item_ids: { // Mantener en inglés
             type: 'array',
-            description: 'An array of item IDs the user intends to purchase.',
+            description: 'Un array de IDs de artículos que el usuario tiene la intención de comprar.',
             items: {
               type: 'string',
             },
           },
-          phone_number: {
+          phone_number: { // Mantener en inglés
             type: 'string',
-            description: "User's phone number used for verification. Formatted like '(111) 222-3333'",
+            description: "Número de teléfono del usuario usado para verificación. Formateado como '(111) 222-3333'",
             pattern: '^\\(\\d{3}\\) \\d{3}-\\d{4}$',
           },
         },
         required: ['item_ids', 'phone_number'],
         additionalProperties: false,
       },
-      execute: async (input: any) => ({ checkoutUrl: 'https://example.com/checkout' }),
+      execute: async (input: any) => ({ checkoutUrl: 'https://example.com/checkout' }), // Mantener nombre de campo en inglés
     }),
   ],
 

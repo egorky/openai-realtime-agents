@@ -21,16 +21,16 @@ export const supervisorSdkScenarioMap: Record<string, { scenario: RealtimeAgent[
   customerServiceRetail: {
     scenario: customerServiceRetailScenario,
     companyName: customerServiceRetailCompanyName,
-    displayName: "Customer Service (Retail)"
+    displayName: "Servicio al Cliente (Retail)"
   },
   chatSupervisor: {
     scenario: chatSupervisorScenario,
     companyName: chatSupervisorCompanyName,
-    displayName: "Chat Supervisor"
+    displayName: "Supervisor de Chat"
   },
   simpleHandoff: {
     scenario: simpleHandoffScenario,
-    companyName: "GenericHandoffInc", // Or define a companyName in simpleHandoff.ts and import
-    displayName: "Simple Handoff (Haiku)"
+    companyName: "Haiku Services Inc.", // Usando el mismo que en clientSdkMap para consistencia
+    displayName: "Asistente de Haikus" // Consistente con clientSdkMap
   },
 };
