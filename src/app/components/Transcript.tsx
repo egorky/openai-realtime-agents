@@ -50,7 +50,22 @@ function Transcript({
     }
   }, [canSend]);
 
+  const [canCopy, setCanCopy] = useState(false);
+
+  useEffect(() => {
+    // Verificar la disponibilidad de la API del portapapeles al montar el componente
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      setCanCopy(true);
+    }
+  }, []);
+
   const handleCopyTranscript = async () => {
+    if (!canCopy) {
+      console.warn("La copia al portapapeles no es compatible o no está permitida en este contexto.");
+      alert("La copia al portapapeles no es compatible en este navegador/contexto."); // O un feedback más sutil
+      return;
+    }
+
     let textToCopy = "";
     transcriptItems.forEach(item => {
       if (item.type === "MESSAGE" && !item.isHidden) {
@@ -67,6 +82,7 @@ function Transcript({
       setTimeout(() => setJustCopied(false), 2000);
     } catch (error) {
       console.error("Fallo al copiar transcripción:", error);
+      alert("Error al copiar la transcripción."); // O un feedback más sutil
     }
   };
 
@@ -89,11 +105,12 @@ function Transcript({
         <div className="flex gap-x-1 sm:gap-x-2">
           <button
             onClick={handleCopyTranscript}
-            title="Copiar transcripción"
-            className="p-1.5 sm:px-2 sm:py-1 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-700 flex items-center justify-center gap-x-1 text-xs sm:text-sm transition-colors"
+              title={canCopy ? "Copiar transcripción" : "Copia no disponible"}
+              disabled={!canCopy}
+              className={`p-1.5 sm:px-2 sm:py-1 rounded-md text-gray-700 flex items-center justify-center gap-x-1 text-xs sm:text-sm transition-colors ${canCopy ? "bg-gray-200 hover:bg-gray-300" : "bg-gray-100 cursor-not-allowed opacity-70"}`}
           >
             <ClipboardCopyIcon className="w-3 h-3 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">{justCopied ? "¡Copiado!" : "Copiar"}</span>
+              <span className="hidden sm:inline">{justCopied ? "¡Copiado!" : (canCopy ? "Copiar" : "No Disp.")}</span>
           </button>
           <button
             onClick={downloadRecording}

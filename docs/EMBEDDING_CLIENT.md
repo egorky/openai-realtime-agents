@@ -65,15 +65,42 @@ Si la página contenedora y la aplicación cliente de chat están en **dominios 
     *   `X-Frame-Options`: No debe estar configurada como `DENY` o `SAMEORIGIN` (si los dominios son diferentes).
     *   `Content-Security-Policy`: La directiva `frame-ancestors` no debe restringir el dominio de tu página contenedora. Por ejemplo, `frame-ancestors 'self' https://www.empresa.com;` permitiría embeber solo en el mismo dominio o en `www.empresa.com`.
     *   **Nota**: Por defecto, Next.js no establece estas cabeceras de forma restrictiva. Sin embargo, tu plataforma de despliegue (Vercel, AWS, etc.) o configuraciones de servidor personalizadas podrían añadirlas. Verifica la configuración de tu entorno de despliegue.
+    *   **HTTPS**: Es altamente recomendable (y a menudo requerido por los navegadores para APIs sensibles como micrófono y portapapeles) que tanto la página contenedora como la aplicación cliente embebida se sirvan a través de HTTPS.
 
-## 5. Funcionalidad "Maximizar" del Widget
+## 5. Permisos del Iframe (`Permissions-Policy` / Atributo `allow`)
+
+Para que la funcionalidad completa del widget de chat (incluyendo audio PTT y copia al portapapeles) funcione correctamente, especialmente en contextos cross-origin, es crucial configurar los permisos adecuados en el tag `<iframe>` usando el atributo `allow` (que implementa la `Permissions-Policy`).
+
+**Permisos Recomendados:**
+
+*   `microphone`: Necesario para la funcionalidad Push-to-Talk (PTT) si el usuario va a enviar audio.
+*   `clipboard-write`: Necesario para que funcione el botón "Copiar Transcripción".
+*   `autoplay`: Puede ser necesario para que el audio del agente de IA se reproduzca automáticamente sin interacción previa del usuario *dentro del iframe*. Las políticas de autoplay de los navegadores son estrictas.
+*   `camera`: Solo si en el futuro se añade funcionalidad de video.
+*   `fullscreen`: Si se quisiera implementar una maximización que haga que el *iframe mismo* ocupe toda la pantalla (en lugar de abrir una nueva pestaña).
+
+**Ejemplo de Tag `<iframe>` con Políticas de Permisos:**
+```html
+<iframe
+    id="aiChatWidget"
+    src="https://<URL_DE_TU_APP_CLIENTE_DESPLEGADA>/client?displayMode=widget"
+    width="370"
+    height="600"
+    style="border: none;"
+    allow="microphone; clipboard-write; autoplay"
+    title="Asistente de Chat IA">
+</iframe>
+```
+**Nota sobre `sandbox`**: Si utilizas el atributo `sandbox` en tu iframe por razones de seguridad, asegúrate de incluir los valores necesarios para que la aplicación funcione, como mínimo: `allow-scripts`, `allow-same-origin` (si es aplicable y deseado), `allow-forms`, `allow-popups` (para el botón de maximizar que abre nueva pestaña), `allow-modals`. Un `sandbox` demasiado restrictivo puede romper la funcionalidad del SDK.
+
+## 6. Funcionalidad "Maximizar" del Widget
 
 Cuando la interfaz del cliente se carga en modo widget (`?displayMode=widget`), muestra un header simplificado que incluye un botón "Maximizar" (o un icono de pantalla completa).
 
-*   Al hacer clic en este botón, la interfaz del cliente se abrirá en una **nueva pestaña del navegador**, utilizando la URL base `/client` (y añadiendo `?agentConfig=<scenario_key>` si un escenario ya estaba activo en el widget).
-*   Esto proporciona al usuario una vista a pantalla completa de la interfaz de chat si lo desea.
+*   Al hacer clic en este botón, la interfaz del cliente se abrirá en una **nueva pestaña del navegador**, utilizando la URL base `/client?displayMode=full` (y añadiendo `&agentConfig=<scenario_key>&conversationId=<conversation_id>` si un escenario y una conversación ya estaban activos en el widget).
+*   Esto proporciona al usuario una vista a pantalla completa de la interfaz de chat si lo desea. La sesión del SDK de Realtime será nueva en la pestaña maximizada; no se transfiere la sesión activa.
 
-## 6. Comunicación Avanzada Host <-> iframe (Conceptual)
+## 7. Comunicación Avanzada Host <-> iframe (Conceptual)
 
 Para funcionalidades más avanzadas, como:
 *   Que el widget notifique a la página contenedora para cerrarse o cambiar de tamaño.
@@ -108,7 +135,7 @@ window.addEventListener('message', (event) => {
 ```
 Esta comunicación avanzada no está completamente implementada en la versión actual del widget más allá del botón "Maximizar" que abre una nueva pestaña.
 
-## 7. Ejemplo Completo de Página Contenedora (Simple)
+## 8. Ejemplo Completo de Página Contenedora (Simple)
 
 ```html
 <!DOCTYPE html>
