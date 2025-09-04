@@ -36,7 +36,8 @@ const ClientBottomToolbar: React.FC<ClientBottomToolbarProps> = ({
   }
 
   function getConnectionButtonClasses() {
-    const baseClasses = "text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors duration-150";
+    // Base classes for sizing and appearance, responsive padding/text size
+    const baseClasses = "text-white font-semibold py-1.5 px-3 sm:py-2 sm:px-4 rounded-md text-xs sm:text-sm transition-colors duration-150";
     const cursorClass = isConnecting ? "cursor-not-allowed opacity-75" : "cursor-pointer";
 
     if (isConnected) {
@@ -46,16 +47,22 @@ const ClientBottomToolbar: React.FC<ClientBottomToolbarProps> = ({
   }
 
   const pttButtonClasses = `
-    px-5 py-3 rounded-full font-semibold text-white transition-all duration-150
+    px-4 py-2 sm:px-5 sm:py-3 rounded-full font-semibold text-white transition-all duration-150 text-xs sm:text-sm
     ${isPTTUserSpeaking ? "bg-red-500 scale-105 shadow-lg" : "bg-green-500 hover:bg-green-600"}
     ${!isPTTActive || !isConnected ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
   `;
 
   return (
-    <div className="bg-gray-100 dark:bg-gray-800 p-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 border-t border-gray-200 dark:border-gray-700 shadow-md">
-      <div className="flex items-center">
-        <span className="mr-3 text-sm font-medium text-gray-700 dark:text-gray-300">
-          Status: <span className={`font-semibold ${isConnected ? "text-green-500 dark:text-green-400" : "text-yellow-500 dark:text-yellow-400"}`}>{sessionStatus}</span>
+    // Adjusted padding and gaps for different screen sizes. Using justify-between for better space utilization on small screens.
+    <div className="bg-gray-100 dark:bg-gray-800 p-2 sm:p-3 md:p-4 flex flex-wrap items-center justify-between sm:justify-center gap-x-2 gap-y-2 sm:gap-x-4 md:gap-x-6 border-t border-gray-200 dark:border-gray-700 shadow-md">
+      {/* Status and Connection Button Group */}
+      <div className="flex items-center gap-2">
+        {/* Status text hidden on very small screens, shown on sm+ */}
+        <span className="hidden sm:inline mr-1 text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+          Estado:
+        </span>
+        <span className={`text-xs sm:text-sm font-semibold ${isConnected ? "text-green-500 dark:text-green-400" : "text-yellow-500 dark:text-yellow-400"}`}>
+          {sessionStatus}
         </span>
         <button
           onClick={onToggleConnection}
@@ -66,50 +73,54 @@ const ClientBottomToolbar: React.FC<ClientBottomToolbarProps> = ({
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* PTT Controls Group */}
+      <div className="flex items-center gap-1 sm:gap-2">
         <input
           id="client-push-to-talk"
           type="checkbox"
           checked={isPTTActive}
           onChange={(e) => setIsPTTActive(e.target.checked)}
           disabled={!isConnected}
-          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+          className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
         />
         <label
           htmlFor="client-push-to-talk"
-          className={`text-sm font-medium ${isConnected ? "text-gray-700 dark:text-gray-300 cursor-pointer" : "text-gray-400 dark:text-gray-500"}`}
+          className={`text-xs sm:text-sm font-medium ${isConnected ? "text-gray-700 dark:text-gray-300 cursor-pointer" : "text-gray-400 dark:text-gray-500"}`}
         >
-          Push-to-Talk
+          PTT {/* Shortened label, full text "Push-to-Talk" shown on sm+ */}
+          <span className="hidden sm:inline"> (Pulsar para hablar)</span>
         </label>
       </div>
 
+      {/* PTT Action Button (only if PTT is active) */}
       {isPTTActive && (
          <button
             onMouseDown={handleTalkButtonDown}
             onMouseUp={handleTalkButtonUp}
-            onTouchStart={handleTalkButtonDown} // For touch devices
-            onTouchEnd={handleTalkButtonUp} // For touch devices
+            onTouchStart={handleTalkButtonDown}
+            onTouchEnd={handleTalkButtonUp}
             disabled={!isPTTActive || !isConnected}
             className={pttButtonClasses}
           >
-            {isPTTUserSpeaking ? "Listening..." : "Hold to Talk"}
+            {isPTTUserSpeaking ? "Escuchando..." : "Mantener para Hablar"}
           </button>
       )}
 
-      <div className="flex items-center gap-2">
+      {/* Audio Playback Toggle Group */}
+      <div className="flex items-center gap-1 sm:gap-2">
         <input
           id="client-audio-playback"
           type="checkbox"
           checked={isAudioPlaybackEnabled}
           onChange={(e) => setIsAudioPlaybackEnabled(e.target.checked)}
-          // Audio playback can be toggled even if not connected, to prepare preference
-          className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+          className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
         />
         <label
           htmlFor="client-audio-playback"
-          className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer"
+          className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer"
         >
-          Enable Audio
+          Audio {/* Shortened label, full text "Enable Audio" shown on sm+ */}
+          <span className="hidden sm:inline"> (Habilitar)</span>
         </label>
       </div>
     </div>

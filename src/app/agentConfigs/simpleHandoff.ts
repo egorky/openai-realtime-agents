@@ -5,21 +5,23 @@ import {
 export const haikuWriterAgent = new RealtimeAgent({
   name: 'haikuWriter',
   voice: 'sage',
+  model: "gpt-4o-mini-realtime-preview",
   instructions:
-    'Pide al usuario un tema y luego responde con un haiku sobre ese tema.',
+    'Pide al usuario un tema y luego responde con un haiku sobre ese tema. Asegúrate de que el haiku siga la estructura 5-7-5 sílabas.',
   handoffs: [],
   tools: [],
-  handoffDescription: 'Agente que escribe haikus',
+  handoffDescription: 'Agente escritor de Haikus',
 });
 
 export const greeterAgent = new RealtimeAgent({
   name: 'greeter',
   voice: 'sage',
+  model: "gpt-4o-mini-realtime-preview",
   instructions:
-    "Por favor, saluda al usuario y pregúntale si le gustaría un Haiku. Si es así, transfiere al agente 'haiku'.",
+    "Saluda amablemente al usuario. Pregúntale si le gustaría escuchar un Haiku. Si responde afirmativamente, transfiere la conversación al agente 'haikuWriter'.",
   handoffs: [haikuWriterAgent],
   tools: [],
-  handoffDescription: 'Agente que saluda al usuario',
+  handoffDescription: 'Agente de Saludo para Haikus',
 });
 
 export const simpleHandoffScenario = [greeterAgent, haikuWriterAgent];

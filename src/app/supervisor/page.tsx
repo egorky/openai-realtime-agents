@@ -33,15 +33,7 @@ interface SimpleToolDefinition {
   description?: string;
   parameters?: object; // JSON schema
 }
-import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
-import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff"; // Assuming a company name might be generic or defined elsewhere for this
-
-const supervisorSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }> = {
-  customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName, displayName: "Customer Service (Retail)" },
-  chatSupervisor: { scenario: chatSupervisorScenario, companyName: chatSupervisorCompanyName, displayName: "Chat Supervisor" },
-  simpleHandoff: { scenario: simpleHandoffScenario, companyName: "GenericHandoffInc", displayName: "Simple Handoff" }, // Example company name
-};
+import { supervisorSdkScenarioMap, defaultAgentSetKey as globalDefaultAgentSetKey } from "@/app/agentConfigs"; // Import the shared map
 
 
 import { useHandleSessionHistory } from "@/app/hooks/useHandleSessionHistory";
@@ -59,11 +51,43 @@ function SupervisorApp() {
   const [currentAgentSetKey, setCurrentAgentSetKey] = useState<string>(defaultAgentSetKey);
   const [currentAgentName, setCurrentAgentName] = useState<string>("");
   const [currentAgentConfigSet, setCurrentAgentConfigSet] = useState<RealtimeAgent[] | null>(null);
-  const [editableMetaprompt, setEditableMetaprompt] = useState<string>("");
-  const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(""); // To allow reset
+  // const [editableMetaprompt, setEditableMetaprompt] = useState<string>(""); // DUPLICATE - REMOVED
+  // const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(""); // REMOVED - Settings page handles its own original/reset logic
   const [editableAgentSpecificTexts, setEditableAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
   const [originalAgentSpecificTexts, setOriginalAgentSpecificTexts] = useState<EditableAgentTexts | null>(null);
   const [currentAgentTools, setCurrentAgentTools] = useState<SimpleToolDefinition[] | null>(null);
+
+  // State for managing scenarios in supervisor UI
+  // Initialize from localStorage or fallback to supervisorSdkScenarioMap
+  const [editableScenarios, setEditableScenarios] = useState<Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }>>(() => {
+    if (typeof window !== 'undefined') {
+      const storedScenarios = localStorage.getItem("supervisorCustomScenarios");
+      if (storedScenarios) {
+        try {
+          return JSON.parse(storedScenarios);
+        } catch (e) {
+          console.error("Failed to parse stored scenarios from localStorage on init", e);
+        }
+      }
+    }
+    return JSON.parse(JSON.stringify(supervisorSdkScenarioMap)); // Deep copy for initial state
+  });
+
+  // State for metaprompt - load from localStorage or use default
+  const [editableMetaprompt, setEditableMetaprompt] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const storedMetaprompt = localStorage.getItem("supervisorCustomMetaprompt");
+      if (storedMetaprompt) {
+        return storedMetaprompt;
+      }
+    }
+    return `Eres un asistente de IA de voz. Responde al usuario de forma conversacional y concisa. No incluyas ningún formato especial en tus respuestas. No incluyas nada que no deba ser leído por la conversión de texto a voz. No necesitas decir cosas como 'Claro', 'Por supuesto', o 'Entendido' a menos que sea una respuesta afirmativa a una pregunta directa. En su lugar, ve directo a la respuesta. Si no puedes ayudar con algo, dilo y explica por qué. Puedes usar las siguientes herramientas para ayudarte a responder al usuario. Para usar una herramienta, responde únicamente con un bloque de código JSON que especifique el nombre de la herramienta y las entradas que necesita. El bloque de código JSON debe ser el único contenido en tu respuesta. No lo envuelves con \`\`\`json.
+
+<TOOL_DESCRIPTIONS>`;
+  });
+  // originalMetaprompt is not strictly needed here anymore if reset on settings page goes to constant
+  // const [originalMetaprompt, setOriginalMetaprompt] = useState<string>(editableMetaprompt);
+
 
   const allConversationIds = useMemo(() => {
     const ids = new Set<string>();
@@ -118,28 +142,24 @@ function SupervisorApp() {
       const stored = localStorage.getItem('supervisorLogsExpanded');
       return stored ? stored === 'true' : true; // Default to true for supervisor
   });
-  const [isAudioPlaybackEnabled, setIsAudioPlaybackEnabled] = useState<boolean>(() => { // For supervisor to listen
-    if (typeof window === 'undefined') return true;
-    const stored = localStorage.getItem('supervisorAudioPlaybackEnabled');
-    return stored ? stored === 'true' : true;
-  });
+
+  // Hydration fix: Initialize with a server-consistent value, then update from localStorage in useEffect
+  const [isAudioPlaybackEnabled, setIsAudioPlaybackEnabled] = useState<boolean>(true);
+
+  useEffect(() => {
+    const storedAudioEnabled = localStorage.getItem('supervisorAudioPlaybackEnabled');
+    setIsAudioPlaybackEnabled(storedAudioEnabled ? storedAudioEnabled === 'true' : true);
+  }, []);
 
 
   useHandleSessionHistory(); // May or may not be relevant for supervisor, but harmless
 
-  // In SupervisorApp, useEffect for loading initial metaprompt
-  useEffect(() => {
-    // Simulate loading the translated metaprompt content
-    const initialMetapromptContent = `Eres un asistente de IA de voz. Responde al usuario de forma conversacional y concisa. No incluyas ningún formato especial en tus respuestas. No incluyas nada que no deba ser leído por la conversión de texto a voz. No necesitas decir cosas como 'Claro', 'Por supuesto', o 'Entendido' a menos que sea una respuesta afirmativa a una pregunta directa. En su lugar, ve directo a la respuesta. Si no puedes ayudar con algo, dilo y explica por qué. Puedes usar las siguientes herramientas para ayudarte a responder al usuario. Para usar una herramienta, responde únicamente con un bloque de código JSON que especifique el nombre de la herramienta y las entradas que necesita. El bloque de código JSON debe ser el único contenido en tu respuesta. No lo envuelves con \`\`\`json.
-
-<TOOL_DESCRIPTIONS>`; // Note: <TOOL_DESCRIPTIONS> is a placeholder used by the SDK
-    setEditableMetaprompt(initialMetapromptContent);
-    setOriginalMetaprompt(initialMetapromptContent);
-  }, []);
+  // In SupervisorApp, useEffect for loading initial metaprompt is replaced by useState initializer above
 
   useEffect(() => {
-    if (currentAgentSetKey && currentAgentName && supervisorSdkScenarioMap[currentAgentSetKey]) {
-      const scenario = supervisorSdkScenarioMap[currentAgentSetKey].scenario;
+    // Use editableScenarios for dynamic updates
+    if (currentAgentSetKey && currentAgentName && editableScenarios[currentAgentSetKey]) {
+      const scenario = editableScenarios[currentAgentSetKey].scenario;
       const agentConfig = scenario.find(agent => agent.name === currentAgentName);
 
       if (agentConfig) {
@@ -147,22 +167,19 @@ function SupervisorApp() {
         if (typeof agentConfig.greeting === 'string') {
           texts.greeting = agentConfig.greeting;
         }
-        // For instructions, agentConfig.instructions might be complex (e.g. an object or array in some structures)
-        // We are targeting simple string instructions here as per RealtimeAgent type.
         if (typeof agentConfig.instructions === 'string') {
           texts.instructions = agentConfig.instructions;
         }
         setEditableAgentSpecificTexts(texts);
-        setOriginalAgentSpecificTexts(texts);
+        setOriginalAgentSpecificTexts(texts); // Consider if original should also come from editableScenarios
 
-        // Load tools
         if (agentConfig.tools && Array.isArray(agentConfig.tools)) {
-          setCurrentAgentTools(agentConfig.tools as SimpleToolDefinition[]); // Cast if necessary
+          setCurrentAgentTools(agentConfig.tools as SimpleToolDefinition[]);
         } else {
           setCurrentAgentTools(null);
         }
       } else {
-        setEditableAgentSpecificTexts(null); // No specific agent selected or found
+        setEditableAgentSpecificTexts(null);
         setOriginalAgentSpecificTexts(null);
         setCurrentAgentTools(null);
       }
@@ -171,45 +188,46 @@ function SupervisorApp() {
       setOriginalAgentSpecificTexts(null);
       setCurrentAgentTools(null);
     }
-  }, [currentAgentSetKey, currentAgentName, supervisorSdkScenarioMap]);
+  }, [currentAgentSetKey, currentAgentName, editableScenarios]); // Depend on editableScenarios
 
-  // Initialize agent configuration based on URL or default
+  // Initialize agent configuration based on URL or default, using editableScenarios
   useEffect(() => {
     let agentKeyFromUrl = searchParams.get("agentConfig");
-    if (!agentKeyFromUrl || !supervisorSdkScenarioMap[agentKeyFromUrl]) {
-      agentKeyFromUrl = defaultAgentSetKey; // Use the global default defined in agentConfigs/index.ts
-      if (!supervisorSdkScenarioMap[agentKeyFromUrl]) { // If global default isn't in supervisor map, pick first from supervisor map
-          agentKeyFromUrl = Object.keys(supervisorSdkScenarioMap)[0];
+    const scenarioKeys = Object.keys(editableScenarios);
+
+    if (!agentKeyFromUrl || !editableScenarios[agentKeyFromUrl]) {
+      agentKeyFromUrl = defaultAgentSetKey; // Global default
+      if (!editableScenarios[agentKeyFromUrl] && scenarioKeys.length > 0) { // If global default not in editable, pick first
+          agentKeyFromUrl = scenarioKeys[0];
+      } else if (scenarioKeys.length === 0) {
+          // No scenarios available at all, handle gracefully
+          console.error("Supervisor: No scenarios available to select.");
+          setCurrentAgentSetKey("");
+          setCurrentAgentConfigSet(null);
+          setCurrentAgentName("");
+          return;
       }
-      // No automatic URL update for supervisor, they can choose.
     }
 
-    const scenarioInfo = supervisorSdkScenarioMap[agentKeyFromUrl];
+    const scenarioInfo = editableScenarios[agentKeyFromUrl!]; // agentKeyFromUrl is now guaranteed to be a key or we returned
     if (scenarioInfo) {
-      setCurrentAgentSetKey(agentKeyFromUrl);
+      setCurrentAgentSetKey(agentKeyFromUrl!);
       setCurrentAgentConfigSet(scenarioInfo.scenario);
       setCurrentAgentName(scenarioInfo.scenario[0]?.name || "");
-    } else {
-      // Fallback if something went wrong, though the above logic should prevent this
-      const firstKey = Object.keys(supervisorSdkScenarioMap)[0];
-      setCurrentAgentSetKey(firstKey);
-      setCurrentAgentConfigSet(supervisorSdkScenarioMap[firstKey].scenario);
-      setCurrentAgentName(supervisorSdkScenarioMap[firstKey].scenario[0]?.name || "");
     }
-  }, [searchParams]);
+    // No else needed due to the check for scenarioKeys.length === 0 above
+  }, [searchParams, editableScenarios]); // Depend on editableScenarios
 
 
   // Effect to connect or update session when agent/scenario changes
   useEffect(() => {
     if (currentAgentSetKey && currentAgentName && sessionStatus === "DISCONNECTED") {
-      // Only connect if disconnected. If settings change while connected, user must explicitly reconnect.
-      // connectToRealtime(); // Potentially allow auto-connect on first load, or require manual connect
+      // connectToRealtime(); // Auto-connect on first load or require manual
     } else if (sessionStatus === "CONNECTED" && currentAgentConfigSet && currentAgentName) {
-      // If already connected and agent changes, this implies a handoff or a change needing session update
       const currentAgent = currentAgentConfigSet.find(a => a.name === currentAgentName);
       logClientEvent({ type: "system.log", message: `Monitoring agent: ${currentAgentName}` }, "agent_monitor_update", currentSupervisorConversationId || undefined);
-      addTranscriptBreadcrumb(`Agent: ${currentAgentName}`, currentAgent); // Log change for supervisor
-      updateSession(!handoffTriggeredRef.current); // Update session, maybe send a meta-event
+      addTranscriptBreadcrumb(`Agent: ${currentAgentName}`, currentAgent);
+      updateSession(!handoffTriggeredRef.current);
       handoffTriggeredRef.current = false;
     }
   }, [currentAgentSetKey, currentAgentName, currentAgentConfigSet, sessionStatus, currentSupervisorConversationId]);
@@ -217,7 +235,7 @@ function SupervisorApp() {
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
     logClientEvent({ url: "/session" }, "fetch_session_token_request_supervisor", currentSupervisorConversationId || undefined);
-    const tokenResponse = await fetch("/api/session"); // Same endpoint for token
+    const tokenResponse = await fetch("/api/session");
     const data = await tokenResponse.json();
     logServerEvent(data, "fetch_session_token_response_supervisor", currentSupervisorConversationId || undefined);
 
@@ -234,18 +252,25 @@ function SupervisorApp() {
     const newConvId = uuidv4();
     setCurrentSupervisorConversationId(newConvId);
 
-    const scenarioDetails = supervisorSdkScenarioMap[currentAgentSetKey]; // Renamed from scenarioInfo to avoid conflict
-    if (!scenarioDetails || !Array.isArray(scenarioDetails.scenario)) { // Check if scenario is an array
-      console.error(`Supervisor: Scenario not found or invalid for key ${currentAgentSetKey}`);
+    // Use editableScenarios for connection
+    const scenarioDetails = editableScenarios[currentAgentSetKey];
+    if (!scenarioDetails) {
+      console.error(`Supervisor: Scenario details not found for key ${currentAgentSetKey}`);
       setSessionStatus("DISCONNECTED");
-      logClientEvent({type: "system.error", message: `Supervisor: Scenario not found or invalid for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
+      logClientEvent({type: "system.error", message: `Supervisor: Scenario details not found for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
+      return;
+    }
+    if (!Array.isArray(scenarioDetails.scenario) || scenarioDetails.scenario.length === 0) {
+      console.error(`Supervisor: Scenario array is invalid or empty for key ${currentAgentSetKey}`);
+      setSessionStatus("DISCONNECTED");
+      logClientEvent({type: "system.error", message: `Supervisor: Scenario array invalid/empty for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
       return;
     }
     if (!currentAgentName) {
-        console.error(`Supervisor: No agent selected for scenario ${currentAgentSetKey}.`);
-        setSessionStatus("DISCONNECTED");
-        logClientEvent({type: "system.error", message: `Supervisor: No agent selected for scenario ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
-        return;
+      console.error(`Supervisor: No agent selected for scenario ${currentAgentSetKey}.`);
+      setSessionStatus("DISCONNECTED");
+      logClientEvent({type: "system.error", message: `Supervisor: No agent selected for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
+      return;
     }
 
     if (sessionStatus !== "DISCONNECTED") return;
@@ -256,84 +281,101 @@ function SupervisorApp() {
       const EPHEMERAL_KEY = await fetchEphemeralKey();
       if (!EPHEMERAL_KEY) return;
 
-      // Create a new array of agent configurations with overrides using shallow copies
-      let processedAgents = scenarioDetails.scenario.map(originalAgentConfig => {
-        let modifiedAgentConfig = { ...originalAgentConfig }; // Shallow copy
+      console.log("[Supervisor Connect] Original scenarioDetails.scenario:", JSON.stringify(scenarioDetails.scenario, null, 2));
 
-        // DO NOT set modifiedAgentConfig.prompt here anymore.
-        // It will be passed as defaultPrompt to the session.
+      let processedAgents = scenarioDetails.scenario
+        .filter(agent => {
+          const isValid = agent && typeof agent === 'object';
+          if (!isValid) console.warn("[Supervisor Connect] Filtering out invalid agent object:", agent);
+          return isValid;
+        })
+        .map((originalAgentConfig, index) => {
+          console.log(`[Supervisor Connect] Processing originalAgentConfig[${index}]:`, JSON.stringify(originalAgentConfig, null, 2));
+          // Ensure originalAgentConfig is not null and is an object, though filter should handle null/undefined
+          // The filter above should ensure originalAgentConfig is an object here.
 
-        // Apply agent-specific overrides
-        if (originalAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
-          if (typeof editableAgentSpecificTexts.greeting === 'string') {
-            modifiedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
+          let modifiedAgentConfig = { ...originalAgentConfig } as RealtimeAgent; // Cast to RealtimeAgent
+
+          // Apply agent-specific overrides for greeting and instructions
+          if (modifiedAgentConfig.name === currentAgentName && editableAgentSpecificTexts) {
+            if (typeof editableAgentSpecificTexts.greeting === 'string') {
+              modifiedAgentConfig.greeting = editableAgentSpecificTexts.greeting;
+            }
+            if (typeof editableAgentSpecificTexts.instructions === 'string') {
+              modifiedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
+            }
           }
-          if (typeof editableAgentSpecificTexts.instructions === 'string') {
-            modifiedAgentConfig.instructions = editableAgentSpecificTexts.instructions;
+
+          // Ensure 'tools' is an array, default to empty array if not present or not an array
+          if (!Array.isArray(modifiedAgentConfig.tools)) {
+            console.warn(`[Supervisor Connect] Agent "${modifiedAgentConfig.name}" tools is not an array, defaulting to []. Original tools:`, modifiedAgentConfig.tools);
+            modifiedAgentConfig.tools = [];
+          } else {
+            // Further check if all elements in tools are valid FunctionTool objects
+            modifiedAgentConfig.tools = modifiedAgentConfig.tools.filter(tool =>
+              tool && typeof tool === 'object' && tool.type === 'function' && typeof tool.function === 'object' && tool.function.name
+            );
           }
-        }
 
-        // Ensure 'tools' is an array
-        if (!Array.isArray(modifiedAgentConfig.tools)) {
-          modifiedAgentConfig.tools = [];
-        }
-        return modifiedAgentConfig;
-      });
+          modifiedAgentConfig.name = String(modifiedAgentConfig.name || `UnnamedAgent_${index}`);
+          if (typeof modifiedAgentConfig.model !== 'string' && modifiedAgentConfig.model !== undefined) {
+             modifiedAgentConfig.model = "gpt-4o-mini-realtime-preview";
+          }
+          // Ensure voice is a string if present, or undefined
+          if (modifiedAgentConfig.voice && typeof modifiedAgentConfig.voice !== 'string') {
+            console.warn(`[Supervisor Connect] Agent "${modifiedAgentConfig.name}" voice is not a string, setting to undefined. Original voice:`, modifiedAgentConfig.voice);
+            modifiedAgentConfig.voice = undefined;
+          }
 
-      // Reorder agents
+
+          console.log(`[Supervisor Connect] Modified modifiedAgentConfig[${index}]:`, JSON.stringify(modifiedAgentConfig, null, 2));
+          return modifiedAgentConfig;
+        }) as RealtimeAgent[]; // Cast after map, filter for nulls is removed as map should always return RealtimeAgent or be filtered by structure
+
+      if (processedAgents.length === 0) {
+        console.error(`Supervisor: No valid agents to connect after processing for scenario ${currentAgentSetKey}. Original count: ${scenarioDetails.scenario.length}`);
+        setSessionStatus("DISCONNECTED");
+        logClientEvent({type: "system.error", message: `No valid agents after processing for ${currentAgentSetKey}`}, "supervisor_connect_fail_config", newConvId);
+        return;
+      }
+
       const currentAgentIndex = processedAgents.findIndex(agent => agent.name === currentAgentName);
       if (currentAgentIndex > 0) {
         const agentToMove = processedAgents.splice(currentAgentIndex, 1)[0];
         processedAgents.unshift(agentToMove);
       } else if (currentAgentIndex === -1 && processedAgents.length > 0) {
-        console.warn(`Supervisor: Selected agent name "${currentAgentName}" not found in scenario "${currentAgentSetKey}". Using first agent "${processedAgents[0].name}".`);
-        setCurrentAgentName(processedAgents[0].name); // This might trigger re-renders, use with caution or ensure it's stable
+        console.warn(`Supervisor: Selected agent name "${currentAgentName}" not found. Using first agent.`);
+        setCurrentAgentName(processedAgents[0].name);
       } else if (processedAgents.length === 0) {
-        console.error(`Supervisor: No agents found or processed for scenario ${currentAgentSetKey}.`);
+        console.error(`Supervisor: No agents in scenario ${currentAgentSetKey}.`);
         setSessionStatus("DISCONNECTED");
-        logClientEvent({type: "system.error", message: `No agents in scenario ${currentAgentSetKey} after processing`}, "supervisor_connect_fail_config", newConvId);
         return;
       }
 
       const agentsToConnect = processedAgents;
+      const guardrail = createModerationGuardrail(scenarioDetails.companyName);
 
-      const guardrail = createModerationGuardrail(scenarioDetails.companyName); // Use scenarioDetails
+      console.log("[Supervisor Connect] Attempting to connect with options:");
+      console.log("[Supervisor Connect] currentAgentSetKey:", currentAgentSetKey);
+      console.log("[Supervisor Connect] currentAgentName:", currentAgentName);
+      console.log("[Supervisor Connect] agentsToConnect:", JSON.stringify(agentsToConnect, null, 2));
+      console.log("[Supervisor Connect] defaultPrompt:", editableMetaprompt ? editableMetaprompt.substring(0, 100) + "..." : "undefined/empty");
 
-      console.log("Supervisor: Attempting to connect with initialAgents:", JSON.stringify(agentsToConnect, null, 2));
-      // This will show the exact structure being passed to the SDK.
-      // Ensure agentsToConnect itself is an array.
-      if (!Array.isArray(agentsToConnect)) {
-          console.error("Supervisor: CRITICAL - agentsToConnect is not an array before connect call!");
-          // Potentially set an error state and return, preventing the connect call.
-          setSessionStatus("DISCONNECTED"); // Or a new "ERROR" status
-          logClientEvent({type: "system.error", message: "Supervisor: agentsToConnect is not an array"}, "supervisor_connect_fail_critical", newConvId);
-          return;
-      }
-      agentsToConnect.forEach((agent, index) => {
-          if (!agent || typeof agent !== 'object') {
-              console.error(`Supervisor: CRITICAL - agent at index ${index} is not an object:`, agent);
-          }
-          if (agent && !Array.isArray(agent.tools)) {
-              console.warn(`Supervisor: Agent ${agent.name || `at index ${index}`} has non-array tools property:`, agent.tools);
-              // Optionally, force agent.tools to be an array here if found to be problematic,
-              // though the mapping above should have already handled it.
-              // agent.tools = [];
-          }
-      });
 
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
-        initialAgents: agentsToConnect, // Use the modified list
-        audioElement: sdkAudioElement, // Supervisor listens here
+        initialAgents: agentsToConnect,
+        audioElement: sdkAudioElement,
         outputGuardrails: [guardrail],
-        extraContext: { addTranscriptBreadcrumb }, // For logging agent changes etc.
-        defaultPrompt: editableMetaprompt, // Add this line
-        // Supervisor specific: might not need input audio stream or turn detection in the same way
-        // For now, it mirrors client, but this could be optimized.
+        extraContext: { addTranscriptBreadcrumb },
+        defaultPrompt: editableMetaprompt,
       });
-       logClientEvent({type: "system.log", message: `Supervisor connected to session with agent: ${currentAgentName}`}, "supervisor_connect_success", newConvId);
-    } catch (err) {
+       logClientEvent({type: "system.log", message: `Supervisor connected with agent: ${currentAgentName}`}, "supervisor_connect_success", newConvId);
+    } catch (err: any) {
       console.error("Supervisor: Error connecting via SDK:", err);
+      console.error("Supervisor: Error name:", err.name);
+      console.error("Supervisor: Error message:", err.message);
+      console.error("Supervisor: Error stack:", err.stack);
       setSessionStatus("DISCONNECTED");
       logClientEvent({type: "system.error", message: `Supervisor connection error: ${err}`}, "supervisor_connect_fail", newConvId);
     }
@@ -391,17 +433,23 @@ function SupervisorApp() {
     if (sessionStatus === "CONNECTED" || sessionStatus === "CONNECTING") {
       disconnectFromRealtime(); // Disconnect first
     }
-    const scenarioInfo = supervisorSdkScenarioMap[newAgentSetKey];
+    // Use editableScenarios for consistency
+    const scenarioInfo = editableScenarios[newAgentSetKey];
     if (scenarioInfo) {
         setCurrentAgentSetKey(newAgentSetKey);
-        setCurrentAgentConfigSet(scenarioInfo.scenario);
-        setCurrentAgentName(scenarioInfo.scenario[0]?.name || ""); // Default to first agent in new scenario
+        setCurrentAgentConfigSet(scenarioInfo.scenario); // This will be an array of RealtimeAgent
+        setCurrentAgentName(scenarioInfo.scenario[0]?.name || "");
 
-        // Update URL to reflect the new scenario selection
         const url = new URL(window.location.toString());
         url.searchParams.set("agentConfig", newAgentSetKey);
-        // To apply the change and potentially reconnect, either navigate or rely on user to click connect
-        window.location.href = url.toString(); // Force reload to apply new config from URL cleanly
+        if (window.location.href !== url.href) { // Avoid reload if URL is already correct
+            window.location.href = url.toString();
+        } else {
+            // If URL is the same, but scenario changed (e.g. due to editing),
+            // ensure states are correctly updated. This path might be less common
+            // if editing always forces a new key or a full state refresh.
+            // This block might not be strictly necessary if URL change always happens.
+        }
     }
   };
 
@@ -469,20 +517,14 @@ function SupervisorApp() {
             selectedAgentName={currentAgentName}
             handleSelectedAgentNameChange={handleSelectedAgentNameChange}
             currentAgentConfigSet={currentAgentConfigSet}
-            // isEventsPaneExpanded and setIsEventsPaneExpanded are removed
+            // Props related to direct editing UI are removed
             isAudioPlaybackEnabled={isAudioPlaybackEnabled}
             setIsAudioPlaybackEnabled={setIsAudioPlaybackEnabled}
-            supervisorSdkScenarioMap={supervisorSdkScenarioMap}
-            editableMetaprompt={editableMetaprompt}
-            setEditableMetaprompt={setEditableMetaprompt}
-            onResetMetaprompt={() => setEditableMetaprompt(originalMetaprompt)}
-            editableAgentSpecificTexts={editableAgentSpecificTexts}
-            setEditableAgentSpecificTexts={setEditableAgentSpecificTexts}
-            onResetAgentSpecificTexts={() => setEditableAgentSpecificTexts(originalAgentSpecificTexts)}
+            supervisorSdkScenarioMap={editableScenarios} // This is the list of scenarios (possibly from localStorage)
             allConversationIds={allConversationIds}
             selectedConversationId={selectedConvIdFilter}
             onSelectConversationId={setSelectedConvIdFilter}
-            // Tool display will be added here or as part of SupervisorControls later
+            agentTools={currentAgentTools}
           />
         </div>
       </div>

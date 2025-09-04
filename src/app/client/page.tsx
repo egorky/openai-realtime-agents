@@ -19,26 +19,28 @@ import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 // Client will use a more restricted set of agent configurations.
-import { allAgentSets, defaultAgentSetKey as globalDefaultAgentSetKey } from "@/app/agentConfigs";
 import { customerServiceRetailScenario, customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-// Import other client-specific scenarios if needed, e.g., simpleHandoffScenario
-// import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
+import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
+import { chatSupervisorScenario, chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor"; // Corrected path
 
 // Client-specific map for scenarios. Only include scenarios a client can initiate.
-const clientSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string }> = {
-  customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName },
-  // Example: If simpleHandoff is a client-selectable scenario:
-  // simpleHandoff: { scenario: simpleHandoffScenario, companyName: "YourSimpleHandoffService" }, // Assuming a company name for simpleHandoff
+// Added displayName for the dropdown
+const clientSdkScenarioMap: Record<string, { scenario: RealtimeAgent[], companyName: string, displayName: string }> = {
+  customerServiceRetail: { scenario: customerServiceRetailScenario, companyName: customerServiceRetailCompanyName, displayName: "Servicio al Cliente (Retail)" },
+  simpleHandoff: { scenario: simpleHandoffScenario, companyName: "Haiku Services Inc.", displayName: "Asistente de Haikus" }, // Provided a company name
+  chatSupervisor: { scenario: chatSupervisorScenario, companyName: chatSupervisorCompanyName, displayName: "Demo Supervisor (Cliente)" }, // Used imported company name
 };
 
 // Determine a safe default agent key for the client page.
 // It must be one of the keys in clientSdkScenarioMap.
-const clientDefaultAgentSetKey = Object.keys(clientSdkScenarioMap)[0] || 'customerServiceRetail';
+// If clientSdkScenarioMap is empty, this will be undefined, which needs careful handling or a hardcoded default.
+const clientDefaultAgentSetKey = Object.keys(clientSdkScenarioMap)[0] || 'customerServiceRetail'; // Fallback to a known key if map somehow empty or first key is problematic
 
 
 import useAudioDownload from "@/app/hooks/useAudioDownload";
 import { useHandleSessionHistory } from "@/app/hooks/useHandleSessionHistory";
 import ClientBottomToolbar from "@/app/components/ClientBottomToolbar";
+import WidgetHeader from "@/app/components/WidgetHeader"; // Import WidgetHeader
 
 function ClientApp() {
   const searchParams = useSearchParams()!;
@@ -47,7 +49,15 @@ function ClientApp() {
   const { logClientEvent, logServerEvent } = useEvent();
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
-  const [selectedAgentKey, setSelectedAgentKey] = useState<string>(clientDefaultAgentSetKey);
+  // State for display mode (full page or embedded widget)
+  const [displayMode, setDisplayMode] = useState<'full' | 'widget'>('full');
+
+  // State for scenario selection step
+  const [scenarioSelectionCompleted, setScenarioSelectionCompleted] = useState<boolean>(false);
+  const [selectedScenarioKeyForUI, setSelectedScenarioKeyForUI] = useState<string>(clientDefaultAgentSetKey);
+
+
+  const [selectedAgentKey, setSelectedAgentKey] = useState<string>(""); // Will be set after scenario selection
   // Agent name within the selected scenario (usually the first agent)
   const [currentAgentName, setCurrentAgentName] = useState<string>("");
 
@@ -114,49 +124,113 @@ function ClientApp() {
 
   useHandleSessionHistory();
 
+  // Effect to handle scenario selection from URL (e.g., deep link) or set up for manual selection
+  // Also handles displayMode from URL
   useEffect(() => {
+    // Log crucial browser APIs available within the iframe context
+    // This should run as early as possible in the client-side lifecycle of ClientApp
+    if (typeof window !== 'undefined') {
+      console.log("[ClientApp Init] typeof window.fetch:", typeof window.fetch);
+      console.log("[ClientApp Init] typeof window.WebSocket:", typeof window.WebSocket);
+      console.log("[ClientApp Init] typeof window.AudioContext:", typeof window.AudioContext);
+      console.log("[ClientApp Init] typeof window.webkitAudioContext:", typeof window.webkitAudioContext);
+      console.log("[ClientApp Init] typeof navigator.mediaDevices:", typeof navigator.mediaDevices);
+      if (navigator.mediaDevices) {
+        console.log("[ClientApp Init] typeof navigator.mediaDevices.getUserMedia:", typeof navigator.mediaDevices.getUserMedia);
+      }
+      console.log("[ClientApp Init] navigator.userAgent:", navigator.userAgent);
+    }
+
     const agentConfigFromUrl = searchParams.get("agentConfig");
-    let keyToUse = clientDefaultAgentSetKey;
+    const modeFromUrl = searchParams.get("displayMode");
+    const conversationIdFromUrl = searchParams.get("conversationId");
+
+    if (modeFromUrl === 'widget') {
+      setDisplayMode('widget');
+    } else {
+      setDisplayMode('full');
+    }
+
+    // If conversationId is in URL, set it. This might be from "maximizing" a widget.
+    // Note: This doesn't automatically "resume" the SDK session, but makes the app aware of the ID.
+    if (conversationIdFromUrl) {
+      setCurrentConversationId(conversationIdFromUrl);
+      // If a conversationId is passed, we assume scenario selection is implicitly done
+      // or that the agentConfig will also be passed to define the scenario.
+      // For simplicity, if conversationId is present, we might bypass scenario selection UI
+      // if agentConfig is also present.
+    }
 
     if (agentConfigFromUrl && clientSdkScenarioMap[agentConfigFromUrl]) {
-      keyToUse = agentConfigFromUrl;
-    } else if (agentConfigFromUrl) {
-      console.warn(`Client: Agent config "${agentConfigFromUrl}" from URL is not recognized or allowed. Using default.`);
-      // Optionally add a transcript message about using default
-    }
-    setSelectedAgentKey(keyToUse);
-    // Set the initial agent name from the selected scenario
-    if (clientSdkScenarioMap[keyToUse]?.scenario[0]?.name) {
-        setCurrentAgentName(clientSdkScenarioMap[keyToUse].scenario[0].name);
-    }
-
-  }, [searchParams]);
-
-  useEffect(() => {
-    // Auto-connect if agent is set, disconnected, and it wasn't an intentional disconnect by the user
-    if (selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED" && !userIntentionalDisconnect) {
-      // Check if essential config is present before attempting to connect
-      const scenarioInfo = clientSdkScenarioMap[selectedAgentKey];
-      if(scenarioInfo && scenarioInfo.scenario.find(a => a.name === currentAgentName)) {
-          connectToRealtime();
-      } else {
-          console.warn("Client: Auto-connect skipped. Agent config or name invalid/missing for selectedAgentKey:", selectedAgentKey, "currentAgentName:", currentAgentName);
-          // Optionally add a transcript message if this state is reached and auto-connection is expected by user.
-          // addTranscriptMessage(uuidv4().slice(0,32), "system", "Auto-connection skipped: Agent configuration missing or invalid.", false);
+      setSelectedAgentKey(agentConfigFromUrl);
+      if (clientSdkScenarioMap[agentConfigFromUrl]?.scenario[0]?.name) {
+        setCurrentAgentName(clientSdkScenarioMap[agentConfigFromUrl].scenario[0].name);
+      }
+      setScenarioSelectionCompleted(true);
+    } else if (agentConfigFromUrl) { // Invalid agentConfig in URL
+      console.warn(`Client: Agent config "${agentConfigFromUrl}" from URL is not recognized or allowed. Defaulting to selection.`);
+      setSelectedScenarioKeyForUI(clientDefaultAgentSetKey);
+      setScenarioSelectionCompleted(false);
+    } else { // No agentConfig in URL
+      // If conversationId is present from URL but no agentConfig, scenario selection is still needed.
+      // If no conversationId and no agentConfig, then normal scenario selection.
+      if (!conversationIdFromUrl) { // Only force scenario selection if no conversationId is trying to be restored
+        setScenarioSelectionCompleted(false);
+      }
+      // If conversationId IS present, but no agentConfig, what happens to scenarioSelectionCompleted?
+      // It might remain true if set by a previous condition, or false if this is the first path.
+      // Let's ensure it's false if no agentConfig is resolved, unless a conversationId implies a context.
+      // For now, if agentConfig is missing, we show selection.
+      // This means if a maximized window has conversationId but no agentConfig, it will ask for scenario.
+      // To improve: if conversationId is passed, agentConfig should also be passed.
+      if (!agentConfigFromUrl) {
+         setScenarioSelectionCompleted(false);
       }
     }
-  }, [selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect]); // Added userIntentionalDisconnect to dependencies
+  }, [searchParams]);
+
+
+  // Auto-connect after scenario selection is completed and valid agent key/name are set
+  // OR if displayMode is 'full' and conversationId was passed (implying a "maximization" attempt)
+  useEffect(() => {
+    // Do not auto-connect if currentConversationId was set from URL (maximization)
+    // because connectToRealtime generates a *new* conversationId.
+    // The user would need to manually connect if they want a new session in the maximized view.
+    // If we wanted to "re-join" or "observe" a session, SDK and backend would need to support it.
+    if (searchParams.get("conversationId")) {
+        // If a conversationId is from URL, we are likely trying to view an existing/past one.
+        // We might want to load its transcript from localStorage/context if available, but not auto-connect a new session.
+        // For now, simply log and prevent auto-connect for this case.
+        console.log("Client: conversationId present in URL, auto-connect skipped. Displaying context for:", searchParams.get("conversationId"));
+        // Potentially add a message to transcript: "Visualizando conversación [ID]. Conéctese para iniciar una nueva interacción."
+        addTranscriptMessage(uuidv4().slice(0,32), "system", `Visualizando contexto de conversación anterior. Conéctese para iniciar una nueva interacción si lo desea.`, false);
+        return;
+    }
+
+    if (scenarioSelectionCompleted && selectedAgentKey && currentAgentName && sessionStatus === "DISCONNECTED" && !userIntentionalDisconnect) {
+      const scenarioInfo = clientSdkScenarioMap[selectedAgentKey];
+      if (scenarioInfo && scenarioInfo.scenario.find(a => a.name === currentAgentName)) {
+        connectToRealtime(); // This will generate a new currentConversationId
+      } else {
+        console.warn("Client: Auto-connect skipped post-selection. Agent config or name invalid/missing:", selectedAgentKey, currentAgentName);
+        addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: No se pudo iniciar la conexión. Configuración de agente inválida.", true);
+      }
+    }
+  }, [scenarioSelectionCompleted, selectedAgentKey, currentAgentName, sessionStatus, userIntentionalDisconnect, searchParams]);
 
    useEffect(() => {
-    if (sessionStatus === "CONNECTED" && clientSdkScenarioMap[selectedAgentKey] && currentAgentName) {
+    if (sessionStatus === "CONNECTED" && selectedAgentKey && clientSdkScenarioMap[selectedAgentKey] && currentAgentName) {
       const currentAgentConfig = clientSdkScenarioMap[selectedAgentKey].scenario.find(a => a.name === currentAgentName);
       if (handoffTriggeredRef.current) {
          addTranscriptBreadcrumb(`Agent: ${currentAgentName}`, currentAgentConfig);
       }
-      updateSession(!handoffTriggeredRef.current); // Trigger initial greeting if not a handoff
+      // Only trigger initial greeting if it's not a restored/maximized conversation view
+      if (!searchParams.get("conversationId")) {
+        updateSession(!handoffTriggeredRef.current);
+      }
       handoffTriggeredRef.current = false;
     }
-  }, [selectedAgentKey, currentAgentName, sessionStatus]);
+   }, [selectedAgentKey, currentAgentName, sessionStatus, searchParams]);
 
 
   useEffect(() => {
@@ -164,6 +238,36 @@ function ClientApp() {
       updateSession(); // Update session based on PTT state etc.
     }
   }, [isPTTActive]);
+
+  const handleScenarioSelection = (selectedKey: string) => {
+    if (clientSdkScenarioMap[selectedKey]) {
+      setSelectedScenarioKeyForUI(selectedKey); // For UI consistency if needed before commit
+    }
+  };
+
+  const handleProceedToChat = () => {
+    if (clientSdkScenarioMap[selectedScenarioKeyForUI]) {
+      setSelectedAgentKey(selectedScenarioKeyForUI);
+      const scenario = clientSdkScenarioMap[selectedScenarioKeyForUI].scenario;
+      if (scenario[0]?.name) {
+        setCurrentAgentName(scenario[0].name);
+      } else {
+        console.error("Client: Selected scenario has no agents defined.");
+        addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: El escenario seleccionado no tiene agentes configurados.", true);
+        return; // Do not proceed
+      }
+      setScenarioSelectionCompleted(true);
+      // Update URL with selected scenario
+      const url = new URL(window.location.toString());
+      url.searchParams.set("agentConfig", selectedScenarioKeyForUI);
+      window.history.pushState({}, '', url);
+
+    } else {
+        console.error("Client: Invalid scenario key on proceed:", selectedScenarioKeyForUI);
+        addTranscriptMessage(uuidv4().slice(0,32), "system", "Error: Selección de escenario inválida.", true);
+    }
+  };
+
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
     logClientEvent({ url: "/session" }, "fetch_session_token_request", currentConversationId || undefined);
@@ -384,14 +488,107 @@ function ClientApp() {
     return () => stopRecording();
   }, [sessionStatus]);
 
-  return (
-    <div className="text-base flex flex-col h-screen bg-gray-50 text-gray-800 relative">
-      <div className="p-4 text-xl font-semibold flex justify-start items-center border-b bg-white shadow-sm">
-        <div>Client Support Portal</div>
-        {/* Add logo here if available */}
+  if (!scenarioSelectionCompleted) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 sm:p-6">
+        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-md">
+          <h1 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-700 text-center">Seleccione un Escenario</h1>
+          <div className="mb-4 sm:mb-6">
+            <label htmlFor="scenario-select" className="block text-sm font-medium text-gray-700 mb-1">
+              Escenario de Conversación:
+            </label>
+            <select
+              id="scenario-select"
+              value={selectedScenarioKeyForUI}
+              onChange={(e) => handleScenarioSelection(e.target.value)}
+              className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md shadow-sm"
+            >
+              {Object.entries(clientSdkScenarioMap).map(([key, { displayName }]) => (
+                <option key={key} value={key}>
+                  {displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleProceedToChat}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-md text-base transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            Continuar al Chat
+          </button>
+        </div>
+         <div className="mt-8 text-center">
+            <p className="text-xs text-gray-500">
+              También puede especificar un escenario mediante el parámetro URL `?agentConfig=yourScenarioKey`
+            </p>
+          </div>
       </div>
+    );
+  }
 
-      <div className="flex flex-1 gap-2 px-2 py-2 overflow-hidden relative">
+  // Define container classes based on displayMode
+  const containerClasses = displayMode === 'widget'
+    ? "text-sm flex flex-col h-full w-full max-w-[370px] max-h-[700px] bg-gray-50 text-gray-800 relative shadow-2xl rounded-lg overflow-hidden"
+    : "text-base flex flex-col h-full min-h-screen bg-gray-50 text-gray-800 relative";
+
+  if (!scenarioSelectionCompleted) {
+    // Scenario selection page also needs to respect displayMode for its container, or have simpler styling for widget
+    const selectionContainerClasses = displayMode === 'widget'
+      ? "flex flex-col items-center justify-center h-full bg-gray-100 p-4"
+      : "flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 sm:p-6";
+    const selectionBoxClasses = displayMode === 'widget'
+      ? "bg-white p-4 rounded-lg shadow-xl w-full"
+      : "bg-white p-6 sm:p-8 rounded-lg shadow-xl w-full max-w-md";
+
+    return (
+      <div className={selectionContainerClasses}>
+        <div className={selectionBoxClasses}>
+          <h1 className={`font-bold mb-4 text-gray-700 text-center ${displayMode === 'widget' ? 'text-lg' : 'text-xl sm:text-2xl'}`}>
+            Seleccione Escenario
+          </h1>
+          <div className="mb-4">
+            <label htmlFor="scenario-select" className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+              Conversación:
+            </label>
+            <select
+              id="scenario-select"
+              value={selectedScenarioKeyForUI}
+              onChange={(e) => handleScenarioSelection(e.target.value)}
+              className="mt-1 block w-full pl-2 pr-8 py-1.5 sm:pl-3 sm:pr-10 sm:py-2 text-xs sm:text-sm border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm"
+            >
+              {Object.entries(clientSdkScenarioMap).map(([key, { displayName }]) => (
+                <option key={key} value={key}>
+                  {displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleProceedToChat}
+            className={`w-full text-white font-semibold py-2 px-4 rounded-md text-xs sm:text-sm transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${displayMode === 'widget' ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={containerClasses}>
+      {displayMode === 'widget' ? (
+        <WidgetHeader
+          scenarioDisplayName={clientSdkScenarioMap[selectedAgentKey]?.displayName || "Asistente"}
+          selectedAgentKey={selectedAgentKey}
+          currentConversationId={currentConversationId} // Pass currentConversationId
+        />
+      ) : (
+        <div className="p-2 sm:p-4 text-lg sm:text-xl font-semibold flex justify-start items-center border-b bg-white shadow-sm">
+          <div>Portal de Soporte: {clientSdkScenarioMap[selectedAgentKey]?.displayName || selectedAgentKey}</div>
+        </div>
+      )}
+
+      <div className="flex flex-1 gap-1 sm:gap-2 px-1 py-1 sm:px-2 sm:py-2 overflow-hidden relative">
         <Transcript
           userText={userText}
           setUserText={setUserText}
